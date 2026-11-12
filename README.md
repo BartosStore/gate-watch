@@ -40,11 +40,27 @@ Gate Watch hlídá úvodní stránky e-shopů. U každého obchodu otevře v izo
 
 ## Spuštění
 
-Potřebujete jen **Docker s Compose**. Z kořene repozitáře spusťte:
+Potřebujete jen **Docker s Compose** (a git pro stažení repozitáře). Na hostiteli musí být volný **port 8080**.
+
+1. Stáhněte repozitář a přejděte do jeho složky:
+
+```bash
+git clone https://github.com/BartosStore/gate-watch.git
+```
+
+```bash
+cd gate-watch
+```
+
+2. Sestavte a spusťte aplikaci i databázi:
 
 ```bash
 docker compose up --build
 ```
+
+3. Otevřete <http://localhost:8080>.
+
+Pokud je port 8080 obsazený, změňte v `docker-compose.yml` u služby `app` levou část mapování, třeba `"8081:8080"`, a aplikace pak poběží na <http://localhost:8081>. UI i API fungují na novém portu beze změny. Jen „Try it out“ ve Swagger UI volá adresu ze `servers` v závazném `openapi.yaml` (`http://localhost:8080`), takže pro zkoušení API přes Swagger nechte aplikaci na portu 8080.
 
 | Co | Kde |
 |---|---|
