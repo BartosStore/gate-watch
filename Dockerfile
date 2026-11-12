@@ -14,12 +14,26 @@ RUN dotnet restore src/Api/Api.csproj
 COPY src/Api/ src/Api/
 RUN dotnet publish src/Api/Api.csproj -c Release -o /app --no-restore
 
+# Tests (only built on demand: docker build --target test .). Uses the Playwright image so browser tests run too.
+FROM mcr.microsoft.com/playwright/dotnet:v1.64.1-noble AS test
+WORKDIR /src
+COPY GateWatch.slnx ./
+COPY src/Api/Api.csproj src/Api/
+COPY tests/Api.Tests/Api.Tests.csproj tests/Api.Tests/
+RUN dotnet restore tests/Api.Tests/Api.Tests.csproj
+COPY src/Api/ src/Api/
+COPY tests/ tests/
+COPY data/ data/
+RUN dotnet test tests/Api.Tests --no-restore --logger "console;verbosity=normal"
+
 # 3) Runtime: Playwright image (Chromium + .NET 10). Version must match the Microsoft.Playwright NuGet package.
 FROM mcr.microsoft.com/playwright/dotnet:v1.64.1-noble
 WORKDIR /app
 COPY --from=build /app ./
 COPY --from=web /src/Api/wwwroot ./wwwroot
 COPY data ./data
+# dotnet publish drops the exec bit of Playwright's bundled Node driver.
+RUN chmod +x /app/.playwright/node/*/node
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     DOTNET_RUNNING_IN_CONTAINER=true
 EXPOSE 8080

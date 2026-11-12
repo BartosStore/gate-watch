@@ -1,6 +1,14 @@
 using Api.Blacklist;
 using Api.Data;
+using Api.Scanning;
 using Microsoft.EntityFrameworkCore;
+
+if (args is ["scan", ..])
+{
+    // Developer command (step 3): docker compose run --rm app scan https://www.example.cz/
+    var dataDir = Environment.GetEnvironmentVariable("DataDir") ?? Path.Combine(AppContext.BaseDirectory, "data");
+    return await ScanCli.RunAsync(args[1..], dataDir);
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,6 +43,7 @@ app.MapPost("/runs", (BlacklistStore blacklist) =>
 
 app.MapFallbackToFile("index.html");
 
-app.Run();
+await app.RunAsync();
+return 0;
 
 public partial class Program;
