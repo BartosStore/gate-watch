@@ -37,7 +37,7 @@ public sealed class BlacklistLoader(
 
     private async Task ImportAndLoadAsync(CancellationToken ct)
     {
-        var dataDir = Path.GetFullPath(config["DataDir"] ?? Path.Combine(env.ContentRootPath, "data"));
+        var dataDir = ServiceSetup.DataDir(config, env);
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var notes = new List<string>();

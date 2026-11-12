@@ -1,6 +1,7 @@
 using Api;
 using Api.Blacklist;
 using Api.Data;
+using Api.Merchants;
 using Api.Runs;
 using Api.Scanning;
 using Microsoft.EntityFrameworkCore;
@@ -32,6 +33,9 @@ using (var scope = app.Services.CreateScope())
     var interrupted = await scope.ServiceProvider.GetRequiredService<RunService>().FailInterruptedRunsAsync(CancellationToken.None);
     if (interrupted > 0) app.Logger.LogWarning("Marked {Count} interrupted run(s) as failed", interrupted);
     app.Logger.LogInformation("Scan concurrency: {Concurrency}", concurrency);
+    var seeded = await scope.ServiceProvider.GetRequiredService<MerchantQueries>().SeedIfEmptyAsync(
+        Path.Combine(ServiceSetup.DataDir(app.Configuration, app.Environment), "merchants-sample.json"), CancellationToken.None);
+    if (seeded > 0) app.Logger.LogInformation("Seeded {Count} merchants from merchants-sample.json", seeded);
 }
 
 app.UseDefaultFiles();
@@ -43,6 +47,7 @@ app.MapGet("/health", async (AppDbContext db, BlacklistStore blacklist, Cancella
         : Results.Json(new { error = "database unavailable" }, statusCode: 503));
 
 app.MapApi();
+app.MapUiApi();
 
 app.MapFallbackToFile("index.html");
 

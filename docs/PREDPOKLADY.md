@@ -47,3 +47,9 @@
 - Při startu, ještě než API začne přijímat požadavky, se běhy ve stavu `running` uzavřou jako `failed` s textem „Přerušeno restartem aplikace“. Znovu se nespouštějí. Výsledky obchodů, které se stihly dokončit, zůstanou dostupné.
 - JSON API používá snake_case (`run_id`, `merchant_id`).
 - Testy pravidel nálezů jsou integrační: běží nad skutečným Postgresem (databáze `gatewatch_test`) s falešným scannerem a ověřují služby přímo, bez HTTP. HTTP vrstvu jsem ověřil ručně přes `curl`.
+- Vzorek obchodů je v `data/merchants-sample.json`: 93 skutečných českých e-shopů různých velikostí a zaměření (elektronika, potraviny, lékárny, móda, sport, knihy, nábytek, hobby, zvířata, kosmetika). Doménu každého jsem předem ověřil. 3 domény bez DNS záznamu jsem vyřadil. Na prostý `curl` jich 69 odpovídá 200 a ostatní blokují boty (403/429) nebo odpovídají pomalu. Takové jsem ve vzorku nechal záměrně, protože ukazují reálné podmínky.
+- Seed: když je tabulka `merchants` při startu prázdná, naplní se z `data/merchants-sample.json`. Na neprázdnou tabulku se nesahá.
+- `GET /alerts`: řazení od naposledy viděného (`last_seen_at DESC`). Filtry `resolved` a `merchant_id`. Stránkování `page` (od 1) a `pageSize` (výchozí 25, max. 1000). Vrací i `merchant_url` a `resolved_at` pro detail v UI.
+- `GET /merchants`: `search` hledá v ID i URL (ILIKE, `%` a `_` se berou doslova) a `status` filtruje podle detailního výsledku poslední kontroly (`ok`, `found`, `timeout`, `unreachable`, `unchecked`). Řazení: obchody s nevyřízeným nálezem, pak timeout/unreachable, pak ok/found (vše vyřízeno), pak nezkontrolované. V každé skupině rozhoduje počet nevyřízených nálezů a pak ID. Poslední kontrola je ta s nejnovějším `started_at` napříč všemi běhy.
+- Stránkované odpovědi mají tvar `{items, total, page, page_size}`.
+- Všechny DB testy sdílejí jednu xUnit kolekci, aby se testovací DB vytvářela jen jednou a třídy se nepraly o `EnsureDeleted`.

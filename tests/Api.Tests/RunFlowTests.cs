@@ -20,6 +20,13 @@ public sealed class PostgresFactAttribute : FactAttribute
     }
 }
 
+/// <summary>All DB test classes share one fixture (and run sequentially), so the database is created once.</summary>
+[CollectionDefinition(Name)]
+public sealed class PostgresCollection : ICollectionFixture<PostgresFixture>
+{
+    public const string Name = "postgres";
+}
+
 /// <summary>Fresh, migrated test database shared by the tests; each test uses its own merchant ids.</summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
@@ -47,7 +54,8 @@ public sealed class FakeScanner : IPageScanner
         new(ScanStatus.Completed, null, scriptUrls.Select(u => new ScannedUrl(u, FindingKind.Script, true)).ToList(), 100, null);
 }
 
-public sealed class RunFlowTests : IClassFixture<PostgresFixture>, IAsyncLifetime
+[Collection(PostgresCollection.Name)]
+public sealed class RunFlowTests : IAsyncLifetime
 {
     private const string Evil1 = "https://evil.example/one.js";
     private const string Evil2 = "https://evil.example/two.js";

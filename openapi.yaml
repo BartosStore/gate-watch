@@ -129,6 +129,70 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /alerts:
+    get:
+      summary: Seznam nálezů (hlavní obrazovka UI)
+      description: |
+        Přidáno. Vrací nálezy (obchod + škodlivá URL) se stránkováním, seřazené od naposledy viděných.
+        Proč: kolega potřebuje projít všechny nevyřízené nálezy napříč obchody a běhy a vrátit se i k vyřízeným.
+        Povinné `GET /runs/{run_id}` ukazuje jen výsledky jednoho běhu. Data jsou stejná jako v `alerts` u `GET /runs`.
+      parameters:
+        - { name: resolved, in: query, required: false, schema: { type: boolean }, description: "true = jen vyřízené, false = jen nevyřízené, bez parametru = vše" }
+        - { name: merchant_id, in: query, required: false, schema: { type: string }, description: Jen nálezy daného obchodu }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 1000, default: 25 } }
+      responses:
+        "200":
+          description: Stránka nálezů
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, page, page_size]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AlertListItem" }
+                  total: { type: integer, description: Počet všech nálezů odpovídajících filtru }
+                  page: { type: integer }
+                  page_size: { type: integer }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /merchants:
+    get:
+      summary: Seznam obchodů s výsledkem poslední kontroly
+      description: |
+        Přidáno. Vrací obchody s výsledkem a časem poslední kontroly a s počtem nevyřízených nálezů.
+        Řazení: nejdřív obchody s nevyřízenými nálezy, pak nedokončené a nedostupné (timeout, unreachable), pak OK,
+        nakonec nezkontrolované.
+        Proč: přehled, kde je problém a kde kontrola neproběhla. Prázdný výsledek kontroly nesmí vypadat jako „bez nálezu“.
+        UI z tohoto seznamu také bere obchody pro `POST /runs`.
+      parameters:
+        - { name: search, in: query, required: false, schema: { type: string }, description: Část ID nebo URL obchodu (bez rozlišení velikosti písmen) }
+        - name: status
+          in: query
+          required: false
+          description: Výsledek poslední kontroly; unchecked = obchod ještě nebyl kontrolován
+          schema: { type: string, enum: [ok, found, timeout, unreachable, unchecked] }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 1000, default: 25 } }
+      responses:
+        "200":
+          description: Stránka obchodů
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, page, page_size]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/MerchantListItem" }
+                  total: { type: integer }
+                  page: { type: integer }
+                  page_size: { type: integer }
+        "400": { $ref: "#/components/responses/Error" }
+
 components:
   responses:
     Error:
@@ -138,6 +202,43 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
+    AlertListItem:
+      type: object
+      description: Nález = dvojice (obchod, normalizovaná URL). `id` je stejné jako `alerts[].id` v `GET /runs/{run_id}`.
+      required: [id, merchant_id, merchant_url, url, kind, blacklist_source, first_seen_at, last_seen_at, resolved, resolved_at, note, first_check_id, last_check_id]
+      properties:
+        id: { type: string }
+        merchant_id: { type: string }
+        merchant_url: { type: string, description: Úvodní stránka obchodu }
+        url: { type: string, description: "Škodlivá adresa (normalizovaná), přesně shodná se záznamem blacklistu" }
+        kind:
+          type: string
+          enum: [script, stylesheet, image, iframe, link, form, redirect, other]
+          description: Kde se adresa našla (typ požadavku nebo prvku DOM), podle prvního výskytu
+        blacklist_source: { type: string, description: "Zdroj záznamu blacklistu: urlhaus, urlhaus-snapshot, custom" }
+        first_seen_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        resolved: { type: boolean }
+        resolved_at: { type: [string, "null"], format: date-time, description: Kdy byl nález poprvé vyřízen }
+        note: { type: string }
+        first_check_id: { type: string, format: uuid }
+        last_check_id: { type: string, format: uuid }
+
+    MerchantListItem:
+      type: object
+      required: [id, url, last_outcome, last_error, last_duration_ms, last_check_at, open_alerts]
+      properties:
+        id: { type: string }
+        url: { type: string }
+        last_outcome:
+          type: [string, "null"]
+          enum: [ok, found, timeout, unreachable, null]
+          description: Detailní výsledek poslední kontroly (null = nezkontrolováno). timeout a unreachable nejsou „bez nálezu“.
+        last_error: { type: [string, "null"] }
+        last_duration_ms: { type: [integer, "null"] }
+        last_check_at: { type: [string, "null"], format: date-time }
+        open_alerts: { type: integer, description: Počet nevyřízených nálezů obchodu }
+
     Error:
       type: object
       required: [error]

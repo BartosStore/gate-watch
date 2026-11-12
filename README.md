@@ -2,7 +2,7 @@
 
 Aplikace pravidelně kontroluje úvodní stránky e-shopů. Hledá, jestli stránka nenačítá škodlivou adresu z blacklistu (URLhaus) nebo na ni nevede. Nálezy se dají vyřídit s poznámkou. Zadání je v [docs/ZADANI.md](docs/ZADANI.md).
 
-> Stav: hotové API (kroky 0–4). UI přibude v kroku 6.
+> Stav: hotové API včetně pomocných endpointů (kroky 0–5). UI přibude v kroku 6.
 
 ## Spuštění
 
@@ -45,6 +45,8 @@ $run = Invoke-RestMethod -Method Post -Uri http://localhost:8080/runs -ContentTy
 Invoke-RestMethod "http://localhost:8080/runs/$($run.run_id)" | ConvertTo-Json -Depth 5
 Invoke-RestMethod -Method Post -Uri http://localhost:8080/alerts/<id>/resolve -ContentType "application/json; charset=utf-8" -Body '{"note":"Ověřeno s obchodem"}'
 ```
+
+Pomocné endpointy pro UI: `GET /alerts?resolved=false&page=1&pageSize=25` (nálezy) a `GET /merchants?search=&status=&page=1&pageSize=25` (obchody s poslední kontrolou). Při prvním startu se tabulka obchodů naplní z `data/merchants-sample.json`.
 
 Souběžnost kontrol nastavuje proměnná `SCAN_CONCURRENCY` v `docker-compose.yml` (výchozí 8).
 

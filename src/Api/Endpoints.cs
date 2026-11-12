@@ -2,6 +2,7 @@ using System.Text.Json;
 using Api.Blacklist;
 using Api.Domain;
 using Api.Findings;
+using Api.Merchants;
 using Api.Runs;
 
 namespace Api;
@@ -46,6 +47,47 @@ public static class Endpoints
                 ? Results.Ok(new { ok = true })
                 : Error(404, "Nález neexistuje.");
         });
+    }
+
+    /// <summary>Helper endpoints for the UI (documented in openapi.yaml).</summary>
+    public static void MapUiApi(this WebApplication app)
+    {
+        app.MapGet("/alerts", async (HttpRequest request, MerchantQueries queries, CancellationToken ct) =>
+        {
+            var q = request.Query;
+            if (!TryPaging(q, out var page, out var pageSize, out var err)) return Error(400, err!);
+            bool? resolved = null;
+            if (q.TryGetValue("resolved", out var r) && !string.IsNullOrEmpty(r))
+            {
+                if (!bool.TryParse(r, out var b)) return Error(400, "Parametr resolved musí být true nebo false.");
+                resolved = b;
+            }
+            return Results.Ok(await queries.AlertsAsync(resolved, q["merchant_id"].FirstOrDefault(), page, pageSize, ct));
+        });
+
+        app.MapGet("/merchants", async (HttpRequest request, MerchantQueries queries, CancellationToken ct) =>
+        {
+            var q = request.Query;
+            if (!TryPaging(q, out var page, out var pageSize, out var err)) return Error(400, err!);
+            var status = q["status"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(status) && !MerchantQueries.Statuses.Contains(status))
+                return Error(400, $"Parametr status musí být jeden z: {string.Join(", ", MerchantQueries.Statuses)}.");
+            return Results.Ok(await queries.MerchantsAsync(q["search"].FirstOrDefault(), status, page, pageSize, ct));
+        });
+    }
+
+    public const int MaxPageSize = 1000;
+
+    private static bool TryPaging(IQueryCollection q, out int page, out int pageSize, out string? error)
+    {
+        page = 1;
+        pageSize = 25;
+        error = null;
+        if (q.TryGetValue("page", out var p) && !string.IsNullOrEmpty(p) && (!int.TryParse(p, out page) || page < 1))
+            error = "Parametr page musí být celé číslo ≥ 1.";
+        else if (q.TryGetValue("pageSize", out var s) && !string.IsNullOrEmpty(s) && (!int.TryParse(s, out pageSize) || pageSize is < 1 or > MaxPageSize))
+            error = $"Parametr pageSize musí být celé číslo 1–{MaxPageSize}.";
+        return error is null;
     }
 
     private static async Task<JsonElement?> ReadJsonAsync(HttpRequest request, CancellationToken ct)

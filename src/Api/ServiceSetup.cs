@@ -2,6 +2,7 @@ using System.Text.Json;
 using Api.Blacklist;
 using Api.Data;
 using Api.Findings;
+using Api.Merchants;
 using Api.Runs;
 using Api.Scanning;
 using Microsoft.EntityFrameworkCore;
@@ -22,11 +23,15 @@ public static class ServiceSetup
         services.AddSingleton<RunQueue>();
         services.AddScoped<FindingService>();
         services.AddScoped<RunService>();
+        services.AddScoped<MerchantQueries>();
         return services;
     }
 
     public static int ScanConcurrency(IConfiguration config) =>
         int.TryParse(config["SCAN_CONCURRENCY"], out var n) && n is > 0 and <= 64 ? n : 8;
+
+    public static string DataDir(IConfiguration config, IHostEnvironment env) =>
+        Path.GetFullPath(config["DataDir"] ?? Path.Combine(env.ContentRootPath, "data"));
 
     public static readonly JsonNamingPolicy JsonNaming = JsonNamingPolicy.SnakeCaseLower;
 }
