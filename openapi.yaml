@@ -1,0 +1,146 @@
+openapi: 3.1.0
+info:
+  title: Kontrola webů obchodníků
+  version: "2.0"
+  description: |
+    Standard API služby. Tyto tři operace zachovejte beze změny.
+    Další endpointy můžete přidat. Každý zdokumentujte zde včetně toho, co dělá a proč je potřeba.
+    API poslouchá na portu 8080 a používá stejnou logiku a data jako aplikace.
+servers:
+  - url: http://localhost:8080
+
+paths:
+  /runs:
+    post:
+      summary: Spustí kontrolu seznamu obchodníků
+      description: Kontrola běží na pozadí, odpověď přijde hned (do 5 s).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [merchants]
+              properties:
+                merchants:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [id, url]
+                    properties:
+                      id: { type: string, description: Stabilní ID obchodu napříč kontrolami }
+                      url: { type: string, format: uri, description: Úvodní stránka e-shopu }
+            example:
+              merchants: [{ id: "shop-1", url: "https://www.example-shop.cz/" }]
+      responses:
+        "202":
+          description: Kontrola založena
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run_id]
+                properties:
+                  run_id: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "503":
+          description: Aplikace ještě připravuje blacklist, kontrola se nezaložila
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /runs/{run_id}:
+    get:
+      summary: Průběh a výsledky kontroly
+      parameters:
+        - { name: run_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Stav kontroly a výsledky obchodů
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run_id, status, results, error]
+                properties:
+                  run_id: { type: string }
+                  status:
+                    type: string
+                    enum: [running, done, failed]
+                    description: Při running lze vracet jen dokončené obchody, při done právě jeden výsledek na obchod.
+                  results:
+                    type: array
+                    items: { $ref: "#/components/schemas/MerchantResult" }
+                  error: { type: [string, "null"], description: Neprázdné jen u failed }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /alerts/{id}/resolve:
+    post:
+      summary: Vyřízení nálezu
+      description: Změnu musí vidět API i UI. Opakované vyřízení stejného ID nevytváří další nález.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note: { type: string, description: Poznámka k vyřízení, může být prázdná }
+      responses:
+        "200":
+          description: Vyřízeno
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { const: true }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+components:
+  responses:
+    Error:
+      description: Chyba
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    MerchantResult:
+      type: object
+      required: [merchant_id, status, matches, alerts, error]
+      properties:
+        merchant_id: { type: string }
+        status:
+          type: string
+          enum: [ok, error]
+          description: |
+            error = HTTP chyba hlavní stránky, nedostupnost nebo překročení 10 s. Prázdné matches u chyby
+            nejsou důkaz bezpečného webu.
+        matches:
+          type: array
+          description: Unikátní absolutní URL skutečných shod s blacklistem. Zůstávají i po vyřízení nálezu.
+          items: { type: string }
+        alerts:
+          type: array
+          description: Právě jeden záznam ke každé URL v matches. Hodnoty resolved a note odpovídají aktuální evidenci.
+          items:
+            type: object
+            required: [id, url, resolved, note]
+            properties:
+              id: { type: string, description: Stejný obchod + stejná URL = stejné ID napříč kontrolami }
+              url: { type: string }
+              resolved: { type: boolean }
+              note: { type: string }
+        error: { type: [string, "null"], description: Popis chyby u status = error, jinak null }
