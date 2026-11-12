@@ -102,6 +102,31 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
 
+  # ---------------------------------------------------------------------------
+  # Přidané endpointy (nad rámec standardu)
+  # ---------------------------------------------------------------------------
+  /health:
+    get:
+      summary: Stav aplikace
+      description: |
+        Přidáno. Vrací 200, když aplikace běží a je dostupná databáze, jinak 503.
+        Proč: kontrola, že kontejner po `docker compose up` opravdu nastartoval, a možnost použít ho jako healthcheck.
+      responses:
+        "200":
+          description: Aplikace i databáze jsou v pořádku
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { const: ok }
+        "503":
+          description: Databáze není dostupná
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
 components:
   responses:
     Error:

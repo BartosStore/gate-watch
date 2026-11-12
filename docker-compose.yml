@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: gatewatch
+      POSTGRES_USER: gatewatch
+      POSTGRES_PASSWORD: gatewatch
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gatewatch -d gatewatch"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Db: "Host=db;Port=5432;Database=gatewatch;Username=gatewatch;Password=gatewatch"
+      SCAN_CONCURRENCY: "8"
+    ports:
+      - "8080:8080"
+    # Chromium needs larger shared memory than Docker's 64 MB default.
+    shm_size: "1gb"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
