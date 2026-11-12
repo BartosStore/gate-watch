@@ -4,6 +4,6 @@ import { defineConfig } from 'vite'
 // Build goes straight into the API's wwwroot; in dev, API calls are proxied to the backend.
 export default defineConfig({
   plugins: [react()],
-  build: { outDir: '../src/Api/wwwroot', emptyOutDir: true },
+  build: { outDir: '../src/Api/wwwroot', emptyOutDir: true, chunkSizeWarningLimit: 1500 },
   server: { proxy: { '/runs': 'http://localhost:8080', '/alerts': 'http://localhost:8080', '/merchants': 'http://localhost:8080', '/health': 'http://localhost:8080' } },
 })
