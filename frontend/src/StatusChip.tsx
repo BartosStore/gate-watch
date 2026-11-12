@@ -1,5 +1,6 @@
-import Chip from '@mui/material/Chip'
+import Box from '@mui/material/Box'
 import Tooltip from '@mui/material/Tooltip'
+import { STATUS_COLORS } from './theme'
 
 /**
  * One chip for all states in the app. Colors:
@@ -8,20 +9,33 @@ import Tooltip from '@mui/material/Tooltip'
  */
 export type Status = 'found' | 'open' | 'timeout' | 'unreachable' | 'ok' | 'unchecked' | 'resolved' | 'found-resolved'
 
-const STYLES: Record<Status, { label: string; bg: string; fg: string }> = {
-  found: { label: 'Nalezeno', bg: '#d32f2f', fg: '#fff' },
-  open: { label: 'Nevyřízeno', bg: '#d32f2f', fg: '#fff' },
-  timeout: { label: 'Nedokončeno', bg: '#fbc02d', fg: '#000' },
-  unreachable: { label: 'Nedostupné', bg: '#ef6c00', fg: '#fff' },
-  ok: { label: 'OK', bg: '#2e7d32', fg: '#fff' },
-  unchecked: { label: 'Nezkontrolováno', bg: '#9e9e9e', fg: '#fff' },
-  resolved: { label: 'Vyřízeno', bg: '#9e9e9e', fg: '#fff' },
-  'found-resolved': { label: 'Nalezeno, vyřízeno', bg: '#9e9e9e', fg: '#fff' },
+export const STATUS_STYLE: Record<Status, { label: string; color: keyof typeof STATUS_COLORS }> = {
+  found: { label: 'Nalezeno', color: 'red' },
+  open: { label: 'Nevyřízeno', color: 'red' },
+  timeout: { label: 'Nedokončeno', color: 'yellow' },
+  unreachable: { label: 'Nedostupné', color: 'orange' },
+  ok: { label: 'OK', color: 'green' },
+  unchecked: { label: 'Nezkontrolováno', color: 'grey' },
+  resolved: { label: 'Vyřízeno', color: 'grey' },
+  'found-resolved': { label: 'Nalezeno, vyřízeno', color: 'grey' },
 }
 
 export default function StatusChip({ status, label, title }: { status: Status; label?: string; title?: string | null }) {
-  const s = STYLES[status]
-  const chip = <Chip size="small" label={label ?? s.label} sx={{ bgcolor: s.bg, color: s.fg, fontWeight: 600 }} />
+  const s = STATUS_STYLE[status]
+  const c = STATUS_COLORS[s.color]
+  const chip = (
+    <Box
+      component="span"
+      sx={{
+        display: 'inline-flex', alignItems: 'center', gap: 0.75, px: 1.25, py: 0.25, borderRadius: 999,
+        bgcolor: c.soft, color: c.text, border: `1px solid ${c.border}`, fontSize: 12.5, fontWeight: 600,
+        lineHeight: '20px', whiteSpace: 'nowrap',
+      }}
+    >
+      <Box component="span" sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: c.main, flexShrink: 0 }} />
+      {label ?? s.label}
+    </Box>
+  )
   return title ? <Tooltip title={title}>{chip}</Tooltip> : chip
 }
 

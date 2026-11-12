@@ -1,12 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
-import Divider from '@mui/material/Divider'
 import Drawer from '@mui/material/Drawer'
+import IconButton from '@mui/material/IconButton'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
+import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
+import CloseRounded from '@mui/icons-material/CloseRounded'
+import ContentCopyRounded from '@mui/icons-material/ContentCopyRounded'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { KIND_LABELS, api, formatDate, type AlertItem } from './api'
@@ -30,11 +33,13 @@ const SOURCE_LABELS: Record<string, string> = {
   custom: 'Vlastní testovací záznam',
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+const mono = 'ui-monospace, "Cascadia Mono", Consolas, monospace'
+
+function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Box>
-      <Typography variant="caption" color="text.secondary">{label}</Typography>
-      <Box sx={{ wordBreak: 'break-all' }}>{children}</Box>
+      <Typography variant="overline" color="text.secondary">{label}</Typography>
+      <Box sx={{ mt: 0.25 }}>{children}</Box>
     </Box>
   )
 }
@@ -52,6 +57,7 @@ export default function AlertDrawer({ alert, onClose }: { alert: AlertItem | nul
       toast(alert!.resolved ? 'Poznámka uložena' : 'Nález vyřízen')
       qc.invalidateQueries({ queryKey: ['alerts'] })
       qc.invalidateQueries({ queryKey: ['merchants'] })
+      qc.invalidateQueries({ queryKey: ['summary'] })
       qc.invalidateQueries({ queryKey: ['run'] })
       onClose()
     },
@@ -67,55 +73,69 @@ export default function AlertDrawer({ alert, onClose }: { alert: AlertItem | nul
   }
 
   return (
-    <Drawer anchor="right" open={!!alert} onClose={onClose}>
+    <Drawer anchor="right" open={!!alert} onClose={onClose} slotProps={{ paper: { sx: { width: { xs: '100vw', sm: 520 } } } }}>
       {alert && (
-        <Stack spacing={2} sx={{ width: { xs: '100vw', sm: 500 }, p: 3 }}>
-          <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="h6">Nález u obchodu {alert.merchant_id}</Typography>
+        <Stack sx={{ height: '100%' }}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', px: 3, py: 2, borderBottom: 1, borderColor: 'divider' }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="overline" color="text.secondary">Nález</Typography>
+              <Typography variant="h6" noWrap>{alert.merchant_id}</Typography>
+            </Box>
             <StatusChip status={alert.resolved ? 'resolved' : 'open'} />
+            <IconButton onClick={onClose} aria-label="Zavřít"><CloseRounded /></IconButton>
           </Stack>
 
-          <Field label="Škodlivá adresa">
-            <Typography sx={{ fontFamily: 'monospace', bgcolor: '#f5f5f5', p: 1, borderRadius: 1 }}>{alert.url}</Typography>
-            <Button size="small" onClick={copy} sx={{ mt: 0.5 }}>Kopírovat adresu</Button>
-          </Field>
+          <Stack spacing={2.5} sx={{ p: 3, flex: 1, overflowY: 'auto' }}>
+            <Section label="Škodlivá adresa">
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-start', bgcolor: '#0f172a', color: '#e2e8f0', borderRadius: 2, p: 1.5 }}>
+                <Typography sx={{ fontFamily: mono, fontSize: 13, wordBreak: 'break-all', flex: 1 }}>{alert.url}</Typography>
+                <Tooltip title="Kopírovat adresu">
+                  <IconButton size="small" onClick={copy} sx={{ color: '#cbd5e1' }} aria-label="Kopírovat adresu"><ContentCopyRounded fontSize="small" /></IconButton>
+                </Tooltip>
+              </Stack>
+            </Section>
 
-          <Field label="Co se našlo a kde">
-            <b>{KIND_LABELS[alert.kind] ?? alert.kind}</b> na úvodní stránce {alert.merchant_url}
-            <Typography variant="body2" color="text.secondary">{KIND_HINTS[alert.kind]}</Typography>
-          </Field>
+            <Section label="Co se našlo a kde">
+              <Typography variant="body2"><b>{KIND_LABELS[alert.kind] ?? alert.kind}</b> na úvodní stránce <span style={{ wordBreak: 'break-all' }}>{alert.merchant_url}</span></Typography>
+              <Typography variant="body2" color="text.secondary">{KIND_HINTS[alert.kind]}</Typography>
+            </Section>
 
-          <Field label="Shoda s blacklistem">
-            Přesná shoda se záznamem <span style={{ fontFamily: 'monospace' }}>{alert.url}</span>
-            <Typography variant="body2" color="text.secondary">Zdroj: {SOURCE_LABELS[alert.blacklist_source] ?? alert.blacklist_source}</Typography>
-          </Field>
+            <Section label="Shoda s blacklistem">
+              <Typography variant="body2">Přesná shoda se záznamem <span style={{ fontFamily: mono, wordBreak: 'break-all' }}>{alert.url}</span></Typography>
+              <Typography variant="body2" color="text.secondary">Zdroj: {SOURCE_LABELS[alert.blacklist_source] ?? alert.blacklist_source}</Typography>
+            </Section>
 
-          <Stack direction="row" spacing={4}>
-            <Field label="Poprvé viděno">{formatDate(alert.first_seen_at)}</Field>
-            <Field label="Naposledy viděno">{formatDate(alert.last_seen_at)}</Field>
+            <Stack direction="row" spacing={4}>
+              <Section label="Poprvé viděno"><Typography variant="body2">{formatDate(alert.first_seen_at)}</Typography></Section>
+              <Section label="Naposledy viděno"><Typography variant="body2">{formatDate(alert.last_seen_at)}</Typography></Section>
+            </Stack>
+
+            <Link to={`/nalezy?merchant_id=${encodeURIComponent(alert.merchant_id)}`} onClick={onClose}>
+              Všechny nálezy obchodu {alert.merchant_id}
+            </Link>
+
+            {alert.resolved && (
+              <Alert severity="info" variant="outlined">
+                Vyřízeno {formatDate(alert.resolved_at)}{alert.note ? <> s poznámkou: „{alert.note}“</> : ' bez poznámky.'}
+                <br />Při dalších kontrolách zůstává vyřízený. Nová adresa u tohoto obchodu by byla nový nález.
+              </Alert>
+            )}
           </Stack>
 
-          <Link to={`/nalezy?merchant_id=${encodeURIComponent(alert.merchant_id)}`} onClick={onClose}>
-            Všechny nálezy obchodu {alert.merchant_id}
-          </Link>
-
-          <Divider />
-
-          {alert.resolved && (
-            <Alert severity="info">
-              Vyřízeno {formatDate(alert.resolved_at)}{alert.note ? <> s poznámkou: „{alert.note}“</> : ' bez poznámky.'}
-              <br />Při dalších kontrolách zůstává vyřízený. Nová adresa u tohoto obchodu by byla nový nález.
-            </Alert>
-          )}
-
-          <Typography variant="subtitle1">{alert.resolved ? 'Upravit poznámku' : 'Vyřídit nález'}</Typography>
-          <TextField label="Poznámka (nepovinná)" multiline minRows={3} value={note} onChange={(e) => setNote(e.target.value)} slotProps={{ htmlInput: { maxLength: 10000 } }} />
-          {resolve.isError && <Alert severity="error">{(resolve.error as Error).message}</Alert>}
-          <Stack direction="row" spacing={1}>
-            <Button variant="contained" onClick={() => resolve.mutate()} disabled={resolve.isPending}>
-              {resolve.isPending ? 'Ukládám…' : alert.resolved ? 'Uložit poznámku' : 'Vyřídit'}
-            </Button>
-            <Button onClick={onClose}>Zavřít</Button>
+          <Stack spacing={1.5} sx={{ p: 3, borderTop: 1, borderColor: 'divider', bgcolor: '#f8fafc' }}>
+            <Typography variant="subtitle2">{alert.resolved ? 'Upravit poznámku' : 'Vyřídit nález'}</Typography>
+            <TextField
+              placeholder="Poznámka (nepovinná), např. „ověřeno s obchodem, skript odstraněn“"
+              multiline minRows={3} value={note} onChange={(e) => setNote(e.target.value)}
+              slotProps={{ htmlInput: { maxLength: 10000 } }} sx={{ bgcolor: '#fff' }}
+            />
+            {resolve.isError && <Alert severity="error">{(resolve.error as Error).message}</Alert>}
+            <Stack direction="row" spacing={1}>
+              <Button variant="contained" onClick={() => resolve.mutate()} disabled={resolve.isPending}>
+                {resolve.isPending ? 'Ukládám…' : alert.resolved ? 'Uložit poznámku' : 'Vyřídit'}
+              </Button>
+              <Button onClick={onClose}>Zavřít</Button>
+            </Stack>
           </Stack>
         </Stack>
       )}

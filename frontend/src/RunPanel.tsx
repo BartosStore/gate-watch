@@ -7,7 +7,10 @@ import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import PlayArrowRounded from '@mui/icons-material/PlayArrowRounded'
+import TravelExploreOutlined from '@mui/icons-material/TravelExploreOutlined'
 import { ApiError, api, type Run } from './api'
+import StatusChip from './StatusChip'
 import { useToast } from './Toast'
 
 type RunRef = { id: string; total: number }
@@ -70,7 +73,10 @@ export default function RunPanel() {
   // While running, refresh the merchant list as results come in.
   const doneCount = data?.results.length ?? 0
   useEffect(() => {
-    if (data?.status === 'running' && doneCount > 0) qc.invalidateQueries({ queryKey: ['merchants'] })
+    if (data?.status === 'running' && doneCount > 0) {
+      qc.invalidateQueries({ queryKey: ['merchants'] })
+      qc.invalidateQueries({ queryKey: ['summary'] })
+    }
   }, [doneCount, data?.status, qc])
 
   // A remembered run that no longer exists (e.g. database reset) is forgotten instead of blocking the button.
@@ -83,27 +89,33 @@ export default function RunPanel() {
   const total = run?.total ?? 0
 
   return (
-    <Paper sx={{ p: 2, mb: 2 }}>
-      <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-        <Button variant="contained" onClick={() => start.mutate()} disabled={running}>
+    <Paper variant="outlined" sx={{ p: 2.5, mb: 3 }}>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { sm: 'center' } }}>
+        <Box sx={{ width: 44, height: 44, borderRadius: 2.5, bgcolor: '#eef2ff', color: 'primary.main', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+          <TravelExploreOutlined />
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 650 }}>Kontrola úvodních stránek</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Zkontroluje všechny obchody v evidenci. Na web nejvýše 10 s, nic se neodesílá ani neproklikává.
+          </Typography>
+        </Box>
+        <Button variant="contained" size="large" startIcon={running ? undefined : <PlayArrowRounded />} onClick={() => start.mutate()} disabled={running}>
           {running ? 'Kontrola běží…' : 'Spustit kontrolu'}
         </Button>
-        <Typography variant="body2" color="text.secondary">
-          Zkontroluje úvodní stránky všech obchodů v seznamu (nejvýše 10 s na web).
-        </Typography>
       </Stack>
 
       {start.isError && <StartError error={start.error} />}
 
       {run && data && (
-        <Box sx={{ mt: 2 }}>
-          <Stack direction="row" sx={{ justifyContent: 'space-between', mb: 0.5 }}>
-            <Typography variant="body2">
+        <Box sx={{ mt: 2.5 }}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ justifyContent: 'space-between', mb: 1 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
               {data.status === 'running' ? 'Probíhá kontrola' : data.status === 'done' ? 'Kontrola dokončena' : 'Kontrola selhala'}: {doneCount} z {total} obchodů
             </Typography>
             <Summary run={data} />
           </Stack>
-          <LinearProgress variant="determinate" value={total ? (doneCount / total) * 100 : 0} color={data.status === 'failed' ? 'error' : 'primary'} />
+          <LinearProgress variant="determinate" value={total ? (doneCount / total) * 100 : 0} color={data.status === 'failed' ? 'error' : 'primary'} sx={{ height: 8, borderRadius: 999 }} />
           {data.status === 'failed' && (
             <Alert severity="error" sx={{ mt: 1 }}>
               {data.error} Výsledky dokončených obchodů zůstaly uložené, ostatní obchody zkontrolované nejsou.
@@ -126,11 +138,15 @@ function StartError({ error }: { error: unknown }) {
 }
 
 function Summary({ run }: { run: Run }) {
-  const errors = run.results.filter((r) => r.status === 'error').length
+  // A timeout can also have matches: count it in both groups, but never as "OK bez nálezu".
   const withMatches = run.results.filter((r) => r.matches.length > 0).length
+  const errors = run.results.filter((r) => r.status === 'error').length
+  const clean = run.results.filter((r) => r.status === 'ok' && r.matches.length === 0).length
   return (
-    <Typography variant="body2" color="text.secondary">
-      s nálezem: <b>{withMatches}</b> · chyba/nedokončeno: <b>{errors}</b> · OK bez nálezu: <b>{run.results.length - errors - withMatches}</b>
-    </Typography>
+    <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
+      <StatusChip status="found" label={`s nálezem ${withMatches}`} />
+      <StatusChip status="timeout" label={`chyba/nedokončeno ${errors}`} />
+      <StatusChip status="ok" label={`OK bez nálezu ${clean}`} />
+    </Stack>
   )
 }
