@@ -2,7 +2,7 @@
 
 Aplikace pravidelně kontroluje úvodní stránky e-shopů. Hledá, jestli stránka nenačítá škodlivou adresu z blacklistu (URLhaus) nebo na ni nevede. Nálezy se dají vyřídit s poznámkou. Zadání je v [docs/ZADANI.md](docs/ZADANI.md).
 
-> Stav: kostra (krok 0). Funkce přibývají postupně.
+> Stav: hotové API (kroky 0–4). UI přibude v kroku 6.
 
 ## Spuštění
 
@@ -15,6 +15,38 @@ docker compose up --build
 - UI i API: <http://localhost:8080>
 - Kontrola stavu: `GET http://localhost:8080/health` (vrací 200, pokud je databáze dostupná)
 - Data Postgresu jsou ve volume `pgdata` a přežijí restart. Smazání dat: `docker compose down -v`.
+
+## API (popis v `openapi.yaml`)
+
+Příklady jsou pro **bash** (Linux, macOS, Git Bash). Pod nimi je stejný postup pro **Windows PowerShell**, kde je `curl` jen alias pro `Invoke-WebRequest`.
+
+Spuštění kontroly. Odpověď `202 {"run_id": "..."}` přijde hned a kontrola běží na pozadí:
+
+```bash
+curl -X POST http://localhost:8080/runs -H "Content-Type: application/json" -d '{"merchants":[{"id":"czc","url":"https://www.czc.cz/"}]}'
+```
+
+Průběh a výsledky. Při `running` obsahuje jen dokončené obchody, při `done` právě jeden výsledek na obchod:
+
+```bash
+curl http://localhost:8080/runs/<run_id>
+```
+
+Vyřízení nálezu. `id` je z `results[].alerts[].id` a tělo musí být v UTF-8:
+
+```bash
+curl -X POST http://localhost:8080/alerts/<id>/resolve -H "Content-Type: application/json" -d '{"note":"overeno"}'
+```
+
+Windows PowerShell:
+
+```powershell
+$run = Invoke-RestMethod -Method Post -Uri http://localhost:8080/runs -ContentType "application/json; charset=utf-8" -Body '{"merchants":[{"id":"czc","url":"https://www.czc.cz/"}]}'
+Invoke-RestMethod "http://localhost:8080/runs/$($run.run_id)" | ConvertTo-Json -Depth 5
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/alerts/<id>/resolve -ContentType "application/json; charset=utf-8" -Body '{"note":"Ověřeno s obchodem"}'
+```
+
+Souběžnost kontrol nastavuje proměnná `SCAN_CONCURRENCY` v `docker-compose.yml` (výchozí 8).
 
 ## Blacklist
 
@@ -45,19 +77,19 @@ docker compose run --rm --no-deps app scan https://www.czc.cz/
 
 ## Testy
 
-Rychlé unit testy (testy s prohlížečem se na hostiteli bez Playwright prohlížečů přeskočí):
+Celá sada se spouští v kontejneru: testy s Chromiem i integrační testy nad Postgresem. Příkaz se spouští z kořene repozitáře a funguje v PowerShellu, cmd i bashi:
+
+```bash
+docker compose run --rm --build tests
+```
+
+Na konci výpisu je počet úspěšných a neúspěšných testů. Testy používají samostatnou databázi `gatewatch_test`, která se při každém spuštění vytvoří znovu, takže data aplikace zůstanou netknutá.
+
+Rychlé unit testy na hostiteli (testy s prohlížečem a s DB se přeskočí):
 
 ```bash
 dotnet test
 ```
-
-Celá sada včetně testů s Chromiem běží v Playwright image (stage `test` v `Dockerfile`). Spouští se z kořene repozitáře a funguje v PowerShellu, cmd i bashi. Když některý test selže, selže i build:
-
-```bash
-docker build --target test --progress=plain --no-cache-filter test --output type=cacheonly .
-```
-
-Na konci výpisu je `Total tests: … Passed: …`. `--no-cache-filter test` vynutí nové spuštění testů i bez změny kódu a `--output type=cacheonly` zabrání ukládání zbytečného image.
 
 ## Struktura
 

@@ -33,4 +33,17 @@
 - Vlastní sandbox Chromia je vypnutý (výchozí nastavení Playwrightu). Izolaci zajišťuje kontejner: neprivilegovaný uživatel, žádná tajemství, žádné připojené složky z hostitele.
 - Známé omezení: hlavička `User-Agent` je běžná, ale Client Hints (`sec-ch-ua`) dál prozrazují `HeadlessChrome`.
 - Vývojářský příkaz `dotnet Api.dll scan <url>` zkontroluje stránky bez DB a vypíše zachycené adresy. Blacklist čte rovnou ze souborů v `data/`.
-- Testy s prohlížečem (`PageScannerTests`) běží proti lokálnímu testovacímu webu (`HttpListener`). Na hostiteli bez nainstalovaných prohlížečů Playwrightu se přeskočí. Celá sada se spouští v Playwright image přes `docker build --target test` (viz README).
+- Testy s prohlížečem (`PageScannerTests`) běží proti lokálnímu testovacímu webu (`HttpListener`). Na hostiteli bez nainstalovaných prohlížečů Playwrightu se přeskočí. Celá sada se spouští přes `docker compose run --rm --build tests` (viz README).
+- **Rozšíření datového modelu:** `checks.matched_urls` (text[]) obsahuje shody s blacklistem z dané kontroly. Bez něj by `GET /runs/{id}` u staršího běhu nevrátil správné `matches`, protože `findings.last_check_id` se novější kontrolou posune. `alerts` se pak dohledávají v `findings` podle (obchod, URL) a ukazují **aktuální** `resolved` a `note`.
+- `POST /runs` vrací 400, když: tělo není JSON objekt s polem `merchants`; pole je prázdné nebo má víc než 25 000 položek; `id` je prázdné, nemá typ text nebo je delší než 200 znaků; `url` není absolutní http(s) adresa; stejné `id` je v požadavku vícekrát; text není v UTF-8.
+- Obchody z `POST /runs` se zapíšou do `merchants` (insert/update URL podle `id`). Kontroluje se poslední známá URL obchodu.
+- `run_id` je UUID. Neplatný formát i neznámé ID vracejí 404.
+- Výsledky se řadí podle `merchant_id`. Při `running` se vracejí jen obchody s dokončenou kontrolou (`run_items.state = done`).
+- Mapování stavů: `ok` a `found` vedou na API `ok`; `timeout` a `unreachable` (včetně HTTP ≥ 400 a interní chyby kontroly) vedou na API `error` a popis je v `error`. U timeoutu se už nalezené shody uloží a vrátí v `matches`.
+- Upsert nálezu: `INSERT … ON CONFLICT (merchant_id, url) DO UPDATE SET last_seen_at, last_check_id`. Typ (`kind`) a zdroj blacklistu zůstávají z prvního výskytu. Kontrola nikdy nemění `resolved` ani `note` a nikdy nález nemaže.
+- `POST /alerts/{id}/resolve`: `resolved_at` se nastaví při prvním vyřízení, opakované volání jen přepíše poznámku. Poznámka může mít nejvýš 10 000 znaků. V API se prázdná poznámka vrací jako `""`.
+- Souběžnost: jeden globální `SemaphoreSlim(SCAN_CONCURRENCY)` sdílený všemi běhy (výchozí 8, rozsah 1–64). Víc běhů najednou se tak dělí o stejný limit.
+- Pokud se při kontrole jednoho obchodu vyhodí výjimka, uloží se jako `unreachable` s textem „Interní chyba kontroly“. Ostatní obchody i běh pokračují.
+- Při startu, ještě než API začne přijímat požadavky, se běhy ve stavu `running` uzavřou jako `failed` s textem „Přerušeno restartem aplikace“. Znovu se nespouštějí. Výsledky obchodů, které se stihly dokončit, zůstanou dostupné.
+- JSON API používá snake_case (`run_id`, `merchant_id`).
+- Testy pravidel nálezů jsou integrační: běží nad skutečným Postgresem (databáze `gatewatch_test`) s falešným scannerem a ověřují služby přímo, bez HTTP. HTTP vrstvu jsem ověřil ručně přes `curl`.

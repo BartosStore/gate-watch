@@ -67,6 +67,8 @@ public class Check
     public int DurationMs { get; set; }
     public DateTimeOffset StartedAt { get; set; }
     public int UrlsSeen { get; set; }
+    /// <summary>Blacklist matches seen by this check (so older runs keep their own matches).</summary>
+    public List<string> MatchedUrls { get; set; } = [];
 }
 
 public class Finding

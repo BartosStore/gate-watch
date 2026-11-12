@@ -30,5 +30,19 @@ services:
     shm_size: "1gb"
     restart: unless-stopped
 
+  # Test suite incl. browser and Postgres tests: docker compose run --rm --build tests
+  # (separate database gatewatch_test, recreated on every run; not started by `docker compose up`).
+  tests:
+    build:
+      context: .
+      target: test
+    profiles: ["test"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TEST_DB: "Host=db;Port=5432;Database=gatewatch_test;Username=gatewatch;Password=gatewatch"
+    shm_size: "1gb"
+
 volumes:
   pgdata:

@@ -14,7 +14,8 @@ RUN dotnet restore src/Api/Api.csproj
 COPY src/Api/ src/Api/
 RUN dotnet publish src/Api/Api.csproj -c Release -o /app --no-restore
 
-# Tests (only built on demand: docker build --target test .). Uses the Playwright image so browser tests run too.
+# Tests (only built on demand: docker compose run --rm --build tests). Playwright image so browser tests run too;
+# the compose service adds Postgres for the DB tests.
 FROM mcr.microsoft.com/playwright/dotnet:v1.64.1-noble AS test
 WORKDIR /src
 COPY GateWatch.slnx ./
@@ -24,7 +25,8 @@ RUN dotnet restore tests/Api.Tests/Api.Tests.csproj
 COPY src/Api/ src/Api/
 COPY tests/ tests/
 COPY data/ data/
-RUN dotnet test tests/Api.Tests --no-restore --logger "console;verbosity=normal"
+RUN dotnet build tests/Api.Tests --no-restore
+CMD ["dotnet", "test", "tests/Api.Tests", "--no-build"]
 
 # 3) Runtime: Playwright image (Chromium + .NET 10). Version must match the Microsoft.Playwright NuGet package.
 FROM mcr.microsoft.com/playwright/dotnet:v1.64.1-noble
