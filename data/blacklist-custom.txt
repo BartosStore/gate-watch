@@ -1,4 +1,11 @@
 # Vlastní testovací záznamy blacklistu (jedna URL na řádek, # = komentář).
-# Slouží k předvedení nálezu na skutečném e-shopu. Po kroku 7 sem přibude
-# adresa skriptu, který některý e-shop ze vzorku opravdu načítá.
+# POZOR: jsou to neškodné skripty, které vybrané e-shopy ze vzorku skutečně načítají
+# (ověřeno příkazem `scan` 2026-11-12). V blacklistu jsou jen proto, aby aplikace
+# měla na skutečných webech co ukázat. Nejde o obvinění, že jsou škodlivé.
+#
+# czc.cz načítá tento skript na úvodní stránce
+https://ngastatic.com/s4c/tracker.js
+# knihydobrovsky.cz načítá tento skript na úvodní stránce
+https://cdn.retino.com/badgeInjector.js
+# Čistě ukázkový záznam na rezervované doméně (nikdy neexistuje)
 https://evil.example/skimmer.js
