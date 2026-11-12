@@ -16,6 +16,18 @@ docker compose up --build
 - Kontrola stavu: `GET http://localhost:8080/health` (vrací 200, pokud je databáze dostupná)
 - Data Postgresu jsou ve volume `pgdata` a přežijí restart. Smazání dat: `docker compose down -v`.
 
+**Windows: `failed to execute bake: exit status 1`.** Tuto chybu hlásí Docker Compose 5 s buildx 0.38, když je složka v příkazové řádce zapsaná s malým písmenem disku (`c:\dev\…`). Buildx pak bere Dockerfile (`C:\dev\…\Dockerfile`) jako soubor mimo povolenou složku. V `docker --debug compose build` je vidět hláška `pass "--allow=fs.read=Dockerfile"`. Řešení: přejděte do složky s velkým písmenem disku, nebo jednorázově vypněte tuto kontrolu buildx:
+
+```bash
+cd /d C:\dev\cs\gate-watch
+```
+
+```bash
+set BUILDX_BAKE_ENTITLEMENTS_FS=0
+```
+
+V PowerShellu (`$env:BUILDX_BAKE_ENTITLEMENTS_FS="0"`) a Git Bashi se problém obvykle neprojeví, protože cestu zapisují s velkým `C:`.
+
 ## API (popis v `openapi.yaml`)
 
 Příklady jsou pro **bash** (Linux, macOS, Git Bash). Pod nimi je stejný postup pro **Windows PowerShell**, kde je `curl` jen alias pro `Invoke-WebRequest`.

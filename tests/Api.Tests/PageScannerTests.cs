@@ -69,6 +69,8 @@ public sealed class PageScannerTests : IAsyncLifetime
         Assert.True(byUrl[_site.Url("/evil-redirect-target")].Blocked);
         Assert.Equal(FindingKind.Link, byUrl[_site.Url("/evil-link")].Kind);
         Assert.Equal(FindingKind.Form, byUrl[_site.Url("/evil-form")].Kind);
+        Assert.Equal(FindingKind.Link, byUrl[_site.Url("/svg-link")].Kind);       // SVG <a>.href is an object
+        Assert.Equal(FindingKind.Form, byUrl[_site.Url("/clobbered-form")].Kind); // <input name="action"> clobbers form.action
         Assert.Equal(1, _site.Hits("/go-evil"));
         foreach (var p in new[] { "/evil.js", "/evil-dyn.js", "/evil-link", "/evil-form", "/evil-redirect-target", "/secret-link" })
             Assert.Equal(0, _site.Hits(p));
@@ -101,6 +103,26 @@ public sealed class PageScannerTests : IAsyncLifetime
         var r = await Scanner(allowPrivate: false).ScanAsync(_site.Url("/"), CancellationToken.None);
         Assert.Equal(ScanStatus.Unreachable, r.Status);
         Assert.Equal(0, _site.Hits("/"));
+    }
+
+    [PlaywrightFact]
+    public async Task Recovers_after_browser_is_closed()
+    {
+        Assert.Equal(ScanStatus.Completed, (await Scanner().ScanAsync(_site.Url("/home"), CancellationToken.None)).Status);
+        await (await _browser.GetAsync()).CloseAsync();
+        Assert.Equal(ScanStatus.Completed, (await Scanner().ScanAsync(_site.Url("/home"), CancellationToken.None)).Status);
+    }
+
+    [PlaywrightFact]
+    public async Task Recovers_after_driver_process_is_killed()
+    {
+        Assert.Equal(ScanStatus.Completed, (await Scanner().ScanAsync(_site.Url("/home"), CancellationToken.None)).Status);
+        foreach (var p in System.Diagnostics.Process.GetProcessesByName("node")) p.Kill(entireProcessTree: true);
+
+        // The check running into the dead driver may fail (never as a clean OK), the next one must work again.
+        var first = await Scanner().ScanAsync(_site.Url("/home"), CancellationToken.None);
+        if (first.Status != ScanStatus.Completed) Assert.Equal(PageScanner.BrowserCrashed, first.Error);
+        Assert.Equal(ScanStatus.Completed, (await Scanner().ScanAsync(_site.Url("/home"), CancellationToken.None)).Status);
     }
 
     [PlaywrightFact]
@@ -168,6 +190,8 @@ internal sealed class TestSite : IDisposable
                         <p>Visit {{Url("/in-text")}} for more.</p>
                         <img src="/img.png">
                         <a href="/evil-link">bad link</a>
+                        <svg><a href="/svg-link"><text>svg link</text></a></svg>
+                        <form action="/clobbered-form"><input name="action"></form>
                         <a href="/secret-link">never clicked</a>
                         <form action="/evil-form" method="post"><input name="q"></form>
                         <iframe src="/frame"></iframe>

@@ -33,13 +33,19 @@ public sealed class ScannerOptions
 /// </summary>
 public sealed class PageScanner(BrowserHost browserHost, BlacklistStore blacklist, ScannerOptions options) : IPageScanner
 {
+    // Attributes are read with getAttribute and resolved against document.baseURI: element properties are not
+    // reliable (SVG <a>.href is an object, <form>.action can be clobbered by <input name="action">).
     private const string DomScript = """
-        () => ({
-          links: [...document.querySelectorAll('a[href]')].map(e => e.href),
-          forms: [...document.querySelectorAll('form[action]')].map(e => e.action),
-          iframes: [...document.querySelectorAll('iframe[src]')].map(e => e.src),
-        })
+        () => {
+          const abs = (v) => { try { return new URL(v, document.baseURI).href } catch { return null } };
+          const pick = (sel, attr) => [...document.querySelectorAll(sel)]
+            .map(e => e.getAttribute(attr) ?? e.getAttribute('xlink:' + attr))
+            .filter(v => typeof v === 'string').map(abs).filter(v => v !== null);
+          return { links: pick('a[href]', 'href'), forms: pick('form[action]', 'action'), iframes: pick('iframe[src]', 'src') };
+        }
         """;
+
+    public const string BrowserCrashed = "Prohlížeč pro kontrolu spadl, kontrola se nedokončila (prohlížeč se spustí znovu)";
 
     public async Task<ScanResult> ScanAsync(string url, CancellationToken ct)
     {
@@ -65,12 +71,23 @@ public sealed class PageScanner(BrowserHost browserHost, BlacklistStore blacklis
 
             work = RunAsync(context, url, found, sw, deadline.Token);
             var (status, error, finalUrl) = await work.WaitAsync(deadline.Token);
+            if (error is not null && BrowserHost.IsDriverFailureMessage(error))
+            {
+                browserHost.MarkBroken();
+                error = BrowserCrashed;
+            }
             return new ScanResult(status, error, found.Values.ToList(), (int)sw.ElapsedMilliseconds, finalUrl);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             return new ScanResult(ScanStatus.Timeout, $"Kontrola nedokončena do {options.Timeout.TotalSeconds:0} s",
                 found.Values.ToList(), (int)sw.ElapsedMilliseconds, null);
+        }
+        catch (Exception ex) when (BrowserHost.IsDriverFailure(ex))
+        {
+            // The browser/driver died: this check is incomplete (never "clean"), the next one gets a fresh browser.
+            browserHost.MarkBroken();
+            return new ScanResult(ScanStatus.Unreachable, BrowserCrashed, found.Values.ToList(), (int)sw.ElapsedMilliseconds, null);
         }
         finally
         {
@@ -171,8 +188,11 @@ public sealed class PageScanner(BrowserHost browserHost, BlacklistStore blacklis
 
     private static void AddDom(ConcurrentDictionary<string, ScannedUrl> found, JsonElement dom, string prop, string kind, Uri baseUri)
     {
-        foreach (var el in dom.GetProperty(prop).EnumerateArray())
+        // Defensive: a hostile page can redefine globals, so accept only an array of strings.
+        if (dom.ValueKind != JsonValueKind.Object || !dom.TryGetProperty(prop, out var arr) || arr.ValueKind != JsonValueKind.Array) return;
+        foreach (var el in arr.EnumerateArray())
         {
+            if (el.ValueKind != JsonValueKind.String) continue;
             var normalized = UrlNormalizer.Normalize(el.GetString(), baseUri);
             if (normalized is not null) found.TryAdd(normalized, new ScannedUrl(normalized, kind, false));
         }
