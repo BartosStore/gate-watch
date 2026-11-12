@@ -1,71 +1,132 @@
 # Předpoklady a rozhodnutí
 
-- Verze jsou zafixované: .NET 10 (LTS), NuGet `Microsoft.Playwright` 1.64.1 a runtime image `mcr.microsoft.com/playwright/dotnet:v1.64.1-noble` (obsahuje .NET 10 runtime), EF Core 10.0.x, Npgsql 10.0.3.
-- Původní zadání (README od Comgate) je přesunuté do `docs/ZADANI.md`. `README.md` teď popisuje spuštění.
-- Přihlašovací údaje k Postgresu v `docker-compose.yml` jsou jen lokální vývojové hodnoty, ne tajemství. Port DB se nevystavuje ven.
-- Aplikace běží v kontejneru pod neprivilegovaným uživatelem `pwuser`, který je součástí Playwright image.
+Zásadní předpoklady a rozhodnutí řešení. Měření a odhady jsou v [VYSLEDKY.md](VYSLEDKY.md), původní zadání v [ZADANI.md](ZADANI.md).
+
+## Nejdůležitější rozhodnutí (shrnutí)
+
+| Téma | Rozhodnutí |
+|---|---|
+| Identita nálezu | Dvojice **(obchod, normalizovaná URL)**. ID je prvních 32 hex znaků SHA-256 z `merchant_id + "\n" + url`, takže je stabilní napříč kontrolami. |
+| Shoda s blacklistem | **Přesná shoda normalizované URL.** Shoda na úrovni hostu je volitelné rozšíření (krok F). |
+| Stavy | DB: `ok`, `found`, `timeout`, `unreachable`. API: `ok`/`found` → `ok`; `timeout`/`unreachable` → `error` s popisem. Nedokončená kontrola **nikdy** nevypadá jako „bez nálezu“. |
+| Timeout s nálezem | Nález se uloží a vrátí v `matches`, ale kontrola zůstává `timeout` (v API `error`). |
+| Vyřízení | Kontrola nikdy nepřepíše `resolved` ani `note` a nález nikdy nesmaže. Vyřízení je idempotentní a opakované volání jen přepíše poznámku. |
+| Blacklist se nenavštěvuje | Ani přímo, ani jako cíl přesměrování: každý požadavek jde přes `route.FetchAsync(MaxRedirects = 0)` a cíl `Location` se kontroluje dřív, než ho prohlížeč otevře. |
+| URLhaus | Vyžaduje Auth-Key, a ten nemáme, takže se používá snapshot `data/urlhaus-snapshot.txt`. S klíčem v `URLHAUS_AUTH_KEY` se export stáhne automaticky. |
+| Restart | Běhy ve stavu `running` se při startu uzavřou jako `failed` („Přerušeno restartem aplikace“) a znovu se nespouštějí. Hotové výsledky zůstávají. |
+
+## Technologie a běh
+
+- Verze jsou zafixované: .NET 10 (LTS), EF Core 10.0.15, Npgsql 10.0.3, NuGet `Microsoft.Playwright` 1.64.1 a jemu odpovídající runtime image `mcr.microsoft.com/playwright/dotnet:v1.64.1-noble` (obsahuje .NET 10). Frontend: React 19, Vite, MUI 9, MUI X DataGrid, TanStack Query, React Router.
+- Jeden kontejner aplikace (API i UI z `wwwroot`, port 8080) a jeden Postgres 17 s healthcheckem a volume `pgdata`. Migrace se aplikují při startu (`Database.MigrateAsync`).
+- Přihlašovací údaje k Postgresu v `docker-compose.yml` jsou jen lokální vývojové hodnoty, ne tajemství. Port DB se ven nevystavuje.
 - Kontejner má `shm_size: 1gb`, protože Chromium s výchozími 64 MB padá.
-- Migrace se aplikují při startu aplikace (`Database.MigrateAsync`).
-- `GET /health` vrací 200 jen tehdy, když je dostupná DB (jinak 503). Endpoint je dopsaný v `openapi.yaml`.
-- Dev server frontendu (Vite) přeposílá API cesty na `localhost:8080`. V produkci je UI servírované ze stejného procesu a portu.
-- Názvy tabulek a sloupců jsou snake_case. Převod dělá krátká smyčka v `AppDbContext`, bez dalšího balíčku.
-- ID běhů a kontrol jsou `uuid`. Stavy (`running`, `ok`, `found`...) se ukládají jako text, aby byly čitelné přímo v DB.
-- `merchants` je zdrojem pro cizí klíče z `run_items`, `checks` a `findings`. Obchod se proto založí nebo aktualizuje při `POST /runs`.
-- Normalizace URL (`UrlNormalizer`): relativní adresa se převede na absolutní vůči stránce, kde se našla. Povolená jsou jen schémata http/https. Schéma a host se převedou na malá písmena (IDN na punycode), výchozí port 80/443 se odstraní, stejně jako fragment a `user:pass@`. Prázdná cesta se nahradí `/`. Cesta a dotaz zůstávají beze změny; jen .NET `Uri` sjednotí procentové kódování a odstraní `.`/`..`.
-- ID nálezu je prvních 32 hex znaků SHA-256 z `merchant_id + "\n" + normalizovaná_url`, malými písmeny.
-- Při prvním startu na prázdné DB zapíše EF do logu jednu `fail` hlášku, protože hledá ještě neexistující tabulku `__EFMigrationsHistory`. Je to neškodné, EF ji hned potom vytvoří.
-- URLhaus (2026-11-12): staré veřejné exporty (`/downloads/text*/`, `csv*`) vracejí 410 Gone. Nový export `https://urlhaus-api.abuse.ch/v2/files/exports/<KEY>/recent.csv` vyžaduje bezplatný Auth-Key.
-- Stahování URLhaus proto proběhne jen s proměnnou `URLHAUS_AUTH_KEY`. Je volitelná a jde nastavit v `.env`, který je v `.gitignore`. Je to jediný údaj, který může kontejner dostat. Bez klíče, nebo když stahování selže, se ponechá předchozí úspěšný import z DB. Pokud žádný není, použije se `data/urlhaus-snapshot.txt`.
-- `data/urlhaus-snapshot.txt` zatím obsahuje jen ukázkové záznamy na rezervovaných doménách (`.invalid`, `.example`, IP z dokumentačního rozsahu), protože skutečná data bez klíče stáhnout nešla. Návod na nahrazení skutečným vzorkem je v hlavičce souboru.
-- Zdroj záznamu (`blacklist_entries.source`): `urlhaus`, `urlhaus-snapshot` nebo `custom`. Když je stejná URL ve více zdrojích, zůstane ten, který ji přidal první.
-- Import přepíše jen záznamy daného zdroje. Nezměněné záznamy si ponechají `added_at` a záznamy zmizelé ze zdroje se smažou. `data/blacklist-custom.txt` se načítá při každém startu.
-- V paměti je blacklist uložený jako slovník `normalizovaná URL -> zdroj` místo HashSetu, protože zdroj je potřeba u nálezu. Dokud se nenačte, `POST /runs` vrací 503. Když import selže (např. DB), opakuje se za 30 s.
-- `GET /health` navíc vrací `blacklist_ready` a `blacklist_entries`.
-- **Rozhodnutí (2026-11-12): URLhaus vyžaduje Auth-Key, a ten nemáme. Proto se jako zdroj URLhaus používá snapshot `data/urlhaus-snapshot.txt`.** Skutečné nálezy pro ukázku zajišťují vlastní záznamy v `data/blacklist-custom.txt`.
-- Kontrola (`PageScanner`): pro celý proces je jeden sdílený Chromium (headless) a pro každý web nový `BrowserContext`. Nastavení kontextu: běžný Chrome user agent, `cs-CZ`, 1366×768, bez stahování, bez oprávnění, service workery blokované (jinak by jejich požadavky obešly `route`). Dialogy se zavírají a vyskakovací okna se hned zavřou.
-- **Přesměrování:** Chromium u přesměrování nevolá `route` handler, takže cíl přesměrování by obešel blokaci blacklistu. To ukázal test. Proto se každý požadavek stahuje přes `route.FetchAsync(MaxRedirects = 0)`. Cíl z hlavičky `Location` se nejdřív zkontroluje proti blacklistu a privátním sítím. Pokud je zakázaný, požadavek se zruší. Jinak se odpověď předá prohlížeči, ten přesměrování provede a nový požadavek projde handlerem znovu. Cena za to je, že každá odpověď jde přes Playwright driver.
-- Zachycuje se každý požadavek včetně těch, které vytvoří JS, každý krok přesměrování a z DOM po načtení `a[href]`, `form[action]` a `iframe[src]`. Adresy se čtou přes vlastnosti `href`, `action` a `src`, takže jsou absolutní (včetně `<base>`). Text a komentáře se neprohledávají.
-- `kind` určuje typ požadavku: script, stylesheet, image, iframe (dokument v podrámci), redirect (cíl `Location`), link, form, jinak other. Když se stejná URL objeví víckrát, platí první zjištěný typ. Síťové požadavky se zaznamenají dřív než DOM.
-- Audio a video (`media`) se zaznamenají, ale nestahují.
-- Časový limit je 10 s na celou kontrolu (`CancellationToken` a zbývající čas pro každý krok Playwrightu). Po načtení (`load`) se ještě nejvýš 3 s čeká na `networkidle`, aby se zachytily pozdní požadavky z JS.
-- Výsledek kontroly: `Completed`, `Timeout` (nenačteno do limitu) nebo `Unreachable` (DNS, spojení, TLS, HTTP ≥ 400 hlavní stránky, zablokovaná hlavní adresa). Adresy zachycené do chvíle chyby se vrátí i u neúspěchu.
-- Blokované privátní a lokální adresy: `localhost`, `*.localhost`, 0/8, 127/8, 10/8, 172.16/12, 192.168/16, 169.254/16, `::1`, fe80::/10, fc00::/7, IPv4 mapované v IPv6 a schémata jiná než http/https. Kontroluje se jen IP zapsaná přímo v URL. Ochrana přes DNS (doména, která se přeloží na privátní IP) je volitelný krok F.
-- Vlastní sandbox Chromia je vypnutý (výchozí nastavení Playwrightu). Izolaci zajišťuje kontejner: neprivilegovaný uživatel, žádná tajemství, žádné připojené složky z hostitele.
-- Známé omezení: hlavička `User-Agent` je běžná, ale Client Hints (`sec-ch-ua`) dál prozrazují `HeadlessChrome`.
-- Vývojářský příkaz `dotnet Api.dll scan <url>` zkontroluje stránky bez DB a vypíše zachycené adresy. Blacklist čte rovnou ze souborů v `data/`.
-- Testy s prohlížečem (`PageScannerTests`) běží proti lokálnímu testovacímu webu (`HttpListener`). Na hostiteli bez nainstalovaných prohlížečů Playwrightu se přeskočí. Celá sada se spouští přes `docker compose run --rm --build tests` (viz README).
-- **Rozšíření datového modelu:** `checks.matched_urls` (text[]) obsahuje shody s blacklistem z dané kontroly. Bez něj by `GET /runs/{id}` u staršího běhu nevrátil správné `matches`, protože `findings.last_check_id` se novější kontrolou posune. `alerts` se pak dohledávají v `findings` podle (obchod, URL) a ukazují **aktuální** `resolved` a `note`.
-- `POST /runs` vrací 400, když: tělo není JSON objekt s polem `merchants`; pole je prázdné nebo má víc než 25 000 položek; `id` je prázdné, nemá typ text nebo je delší než 200 znaků; `url` není absolutní http(s) adresa; stejné `id` je v požadavku vícekrát; text není v UTF-8.
-- Obchody z `POST /runs` se zapíšou do `merchants` (insert/update URL podle `id`). Kontroluje se poslední známá URL obchodu.
-- `run_id` je UUID. Neplatný formát i neznámé ID vracejí 404.
-- Výsledky se řadí podle `merchant_id`. Při `running` se vracejí jen obchody s dokončenou kontrolou (`run_items.state = done`).
-- Mapování stavů: `ok` a `found` vedou na API `ok`; `timeout` a `unreachable` (včetně HTTP ≥ 400 a interní chyby kontroly) vedou na API `error` a popis je v `error`. U timeoutu se už nalezené shody uloží a vrátí v `matches`.
-- Upsert nálezu: `INSERT … ON CONFLICT (merchant_id, url) DO UPDATE SET last_seen_at, last_check_id`. Typ (`kind`) a zdroj blacklistu zůstávají z prvního výskytu. Kontrola nikdy nemění `resolved` ani `note` a nikdy nález nemaže.
-- `POST /alerts/{id}/resolve`: `resolved_at` se nastaví při prvním vyřízení, opakované volání jen přepíše poznámku. Poznámka může mít nejvýš 10 000 znaků. V API se prázdná poznámka vrací jako `""`.
-- Souběžnost: jeden globální `SemaphoreSlim(SCAN_CONCURRENCY)` sdílený všemi běhy (výchozí 8, rozsah 1–64). Víc běhů najednou se tak dělí o stejný limit.
-- Pokud se při kontrole jednoho obchodu vyhodí výjimka, uloží se jako `unreachable` s textem „Interní chyba kontroly“. Ostatní obchody i běh pokračují.
-- Při startu, ještě než API začne přijímat požadavky, se běhy ve stavu `running` uzavřou jako `failed` s textem „Přerušeno restartem aplikace“. Znovu se nespouštějí. Výsledky obchodů, které se stihly dokončit, zůstanou dostupné.
-- JSON API používá snake_case (`run_id`, `merchant_id`).
-- Testy pravidel nálezů jsou integrační: běží nad skutečným Postgresem (databáze `gatewatch_test`) s falešným scannerem a ověřují služby přímo, bez HTTP. HTTP vrstvu jsem ověřil ručně přes `curl`.
-- Vzorek obchodů je v `data/merchants-sample.json`: původně 93, po rozšíření **219** skutečných českých e-shopů (podrobnosti o výběru a ověření jsou ve VYSLEDKY.md). Původních 93: e-shopy různých velikostí a zaměření (elektronika, potraviny, lékárny, móda, sport, knihy, nábytek, hobby, zvířata, kosmetika). Doménu každého jsem předem ověřil. 3 domény bez DNS záznamu jsem vyřadil. Na prostý `curl` jich 69 odpovídá 200 a ostatní blokují boty (403/429) nebo odpovídají pomalu. Takové jsem ve vzorku nechal záměrně, protože ukazují reálné podmínky.
-- Seed: když je tabulka `merchants` při startu prázdná, naplní se z `data/merchants-sample.json`. Na neprázdnou tabulku se nesahá.
-- `GET /alerts`: řazení od naposledy viděného (`last_seen_at DESC`). Filtry `resolved` a `merchant_id`. Stránkování `page` (od 1) a `pageSize` (výchozí 25, max. 1000). Vrací i `merchant_url` a `resolved_at` pro detail v UI.
-- `GET /merchants`: `search` hledá v ID i URL (ILIKE, `%` a `_` se berou doslova) a `status` filtruje podle detailního výsledku poslední kontroly (`ok`, `found`, `timeout`, `unreachable`, `unchecked`). Řazení: obchody s nevyřízeným nálezem, pak timeout/unreachable, pak ok/found (vše vyřízeno), pak nezkontrolované. V každé skupině rozhoduje počet nevyřízených nálezů a pak ID. Poslední kontrola je ta s nejnovějším `started_at` napříč všemi běhy.
-- Stránkované odpovědi mají tvar `{items, total, page, page_size}`.
-- Všechny DB testy sdílejí jednu xUnit kolekci, aby se testovací DB vytvářela jen jednou a třídy se nepraly o `EnsureDeleted`.
-- UI (krok 6a): React + MUI (+ @mui/icons-material) + MUI X DataGrid (community, serverové stránkování, nejvýš 100 řádků na stránku) + TanStack Query + React Router. Má dvě obrazovky: `/nalezy` (úvodní) a `/obchody`.
-- „Spustit kontrolu“ načte z `GET /merchants` všechny obchody v DB (po 1000) a pošle je do `POST /runs`. Průběh se zjišťuje pollingem `GET /runs/{id}` každé 2 s. Po dokončení se obnoví seznamy. Odpověď 503 (blacklist se připravuje) se zobrazí jako upozornění, ne jako chyba.
-- Barvy `StatusChip`: červená = nalezeno nebo nevyřízeno, žlutá = timeout, oranžová = nedostupné, zelená = OK, šedá = nezkontrolováno, vyřízeno nebo „nalezeno, vše vyřízeno“. Timeout a nedostupné nejsou nikdy zelené.
-- Na obrazovce Nálezy je stálé upozornění, když má nějaký obchod nedokončenou, nedostupnou nebo žádnou kontrolu, protože prázdný seznam nálezů pak není důkazem bezpečí.
-- Po vyřízení se boční panel zavře, zobrazí se toast a obnoví se seznamy i výsledky běhů.
-- **Otevřený bod: blokace cílů přesměrování a ochrana proti botům.** Kvůli zadání „adresy z blacklistu se nikdy nenavštěvují“ jde každý požadavek přes `route.FetchAsync(MaxRedirects = 0)` (viz výše). Požadavky tedy neposílá Chromium, ale Node driver Playwrightu, a ochrana proti botům ho často odmítne. Při ověřování UI (93 obchodů) skončilo 41 obchodů chybou nebo timeoutem (27× nedostupné, převážně HTTP 403; 14× timeout), přitom prostý `curl` dostal 200 od 69 z nich. Kontrola tedy dodržuje zadání, jen kvůli tomu víc obchodů nedokončí. Žádný obchod přitom nevypadá jako „bez nálezu“. Rozhodnutí: zadání má přednost a toto řešení zůstává. Na konci (po kroku 8, podle zbylého času) zkusíme posílat požadavky přímo z Chromia při zachování blokace cílů přesměrování. Variantu převezmeme, jen pokud projde test `Captures_requests_redirects_dom_and_never_fetches_blacklisted_urls`.
-- UI (krok 6b): boční panel ukazuje celou škodlivou adresu s kopírováním, typ prvku i s vysvětlením (např. „formulář odesílá data na tuto adresu, nic se neodesílalo“), shodu s blacklistem a jeho zdroj, časy a u vyřízeného nálezu kdy a s jakou poznámkou byl vyřízen. Úvodní stránka obchodu je jen text, ne odkaz, protože web může být napadený.
-- URL v tabulce nálezů se zkracuje uprostřed (zůstane vidět host i název souboru), celá je v tooltipu.
-- Z obchodu vede odkaz „nálezy“ na `/nalezy?merchant_id=…`. Při filtru na jeden obchod je výchozí pohled „Vše“, aby byla vidět i historie vyřízených nálezů.
-- Rozběhnutá kontrola se pamatuje v `localStorage` (jen `run_id` a počet obchodů, čtení i zápis jsou v try/catch). Po obnovení stránky se zobrazuje dál. Po dokončení se zapomene a neznámý běh (404, např. po smazání DB) se zahodí.
-- **Obnova po pádu prohlížeče:** když spadne Chromium nebo Playwright driver (v logu „Process exited“), `BrowserHost` při další kontrole spustí oba znovu. Kontroly rozpracované v okamžiku pádu skončí jako `unreachable` s textem „Prohlížeč pro kontrolu spadl…“, takže nikdy jako čisté OK. Bez této opravy po pádu selhaly všechny další kontroly běhu (zjištěno při měření 219 webů).
-- **Čtení DOM:** `a[href]`, `form[action]` a `iframe[src]` se čtou přes `getAttribute` (u SVG i `xlink:href`) a převádějí na absolutní adresu vůči `document.baseURI`. Vlastnosti elementů nejsou spolehlivé: SVG `<a>.href` je objekt a `form.action` může přepsat `<input name="action">` (DOM clobbering). Výsledek ze stránky se bere jen jako pole textů, protože stránka může být napadená.
-- Doporučená souběžnost pro produkční běh je 4 na proces, škálovat se má víc kontejnery (viz VYSLEDKY.md). Výchozí hodnota v `docker-compose.yml` zůstává 8 podle zadání.
-- **`POST /runs` do 5 s i pro 20 000 obchodů:** obchody i položky běhu se zapisují jedním SQL příkazem (`unnest`), ne po jednom přes EF. URL obchodu se přepisuje, jen když se změnila. Změřeno s 20 000 obchody: původně 4,5–7,4 s, po opravě 2,2 s na prázdné DB a 2,9–3,3 s, když na pozadí už běží jiná kontrola.
-- **Redesign UI:** tmavé boční menu (na mobilu horní lišta) s počtem nevyřízených nálezů. Na obrazovce Nálezy jsou souhrnné karty (nevyřízené nálezy, obchody s nálezem, nedokončeno, nedostupné, OK, nezkontrolováno); proklik vede na seznam obchodů s filtrem, který je v URL (`/obchody?status=…`). Chipy stavů mají jemné podbarvení s barevnou tečkou a dodržují barevná pravidla zadání. Písmo je systémové (Inter, pokud je nainstalované, jinak Segoe UI), aby UI nezáviselo na externích fontech.
-- Opraveno při redesignu: souhrn běhu počítal obchod s timeoutem a nálezem dvakrát, takže „OK bez nálezu“ vycházelo nižší. Teď se jako OK bez nálezu počítají jen dokončené kontroly bez shody.
+- `dotnet publish` ztrácí exec bit Node driveru Playwrightu, proto ho Dockerfile nastavuje znovu (`chmod +x`).
+- Při prvním startu na prázdné DB zapíše EF do logu jednu hlášku `fail`, protože hledá ještě neexistující `__EFMigrationsHistory`. Je to neškodné.
+- Windows: Docker Compose 5 s buildx 0.38 selže hláškou `failed to execute bake`, když je složka v cmd zapsaná s malým písmenem disku (`c:\…`). Řešení je v README.
+- Původní README od Comgate je přesunuté do `docs/ZADANI.md`. `README.md` popisuje řešení a spuštění.
+
+## Datový model
+
+- Tabulky podle zadání: `merchants`, `runs`, `run_items`, `checks`, `findings` (unikátní index `(merchant_id, url)`), `blacklist_entries` a `blacklist_meta`. Názvy jsou snake_case; převod dělá krátká smyčka v `AppDbContext`, bez dalšího balíčku.
+- **Rozšíření:** `checks.matched_urls` (text[]) obsahuje shody dané kontroly. Bez něj by `GET /runs/{id}` u staršího běhu nevrátil správné `matches`, protože `findings.last_check_id` se novější kontrolou posune. `alerts` se dohledávají ve `findings` podle (obchod, URL) a vždy ukazují **aktuální** `resolved` a `note`.
+- ID běhů a kontrol jsou `uuid`. Stavy se ukládají jako text, aby byly čitelné přímo v DB.
+- `merchants` je zdroj cizích klíčů. Obchody z `POST /runs` se proto zapíšou nebo aktualizují; URL se přepíše jen při změně. Kontroluje se poslední známá URL obchodu.
+- Seed: když je tabulka `merchants` při startu prázdná, naplní se z `data/merchants-sample.json` (219 e-shopů). Na neprázdnou tabulku se nesahá.
+
+## Normalizace URL
+
+Jedna sdílená funkce `UrlNormalizer` pro požadavky, odkazy, formuláře i blacklist:
+- relativní adresa se převede na absolutní vůči stránce, kde se našla (u DOM vůči `document.baseURI`),
+- povolená jsou jen schémata `http` a `https`, ostatní se zahodí,
+- schéma a host se převedou na malá písmena (IDN na punycode), výchozí port 80/443 se odstraní, stejně jako fragment a `user:pass@`,
+- prázdná cesta se nahradí `/`, dotazový řetězec zůstává beze změny. Procentové kódování a `.`/`..` sjednotí .NET `Uri`.
+
+## Blacklist
+
+- Staré veřejné exporty URLhaus (`/downloads/text*/`, `csv*`) vracejí **410 Gone**. Nový export `https://urlhaus-api.abuse.ch/v2/files/exports/<KEY>/recent.csv` vyžaduje bezplatný Auth-Key.
+- Pořadí zdrojů při startu:
+  1. URLhaus, pokud je nastavené `URLHAUS_AUTH_KEY`,
+  2. jinak předchozí úspěšný import z DB,
+  3. jinak `data/urlhaus-snapshot.txt` (zatím jen ukázkové záznamy na rezervovaných doménách `.invalid` a `.example`; návod na náhradu skutečnými daty je v hlavičce souboru),
+  4. vždy navíc `data/blacklist-custom.txt`.
+- `data/blacklist-custom.txt` obsahuje 2 skripty, které weby ze vzorku skutečně načítají (czc.cz, knihydobrovsky.cz a laskakit.cz). Jsou neškodné a slouží jen k předvedení nálezu.
+- Import přepíše jen záznamy daného zdroje. Nezměněné záznamy si ponechají `added_at`. Když je URL ve více zdrojích, zůstane první.
+- V paměti je blacklist jako slovník `URL → zdroj`, protože zdroj je potřeba u nálezu. Dokud se nenačte, `POST /runs` vrací **503**. Když import selže, opakuje se za 30 s. Stav ukazuje `GET /health`.
+
+## Kontrola webu (`PageScanner`)
+
+- Pro celý proces je jeden sdílený headless Chromium a pro každý web **nový `BrowserContext`**: běžný Chrome user agent, `cs-CZ`, 1366×768, bez stahování, bez oprávnění. Service workery jsou blokované, jinak by obešly `route`. Dialogy se zavírají a vyskakovací okna hned zavírají.
+- Zachytí se všechny síťové požadavky včetně těch, které vytvoří JS, každý krok přesměrování a po načtení z DOM `a[href]`, `form[action]` a `iframe[src]`.
+  - Atributy se čtou přes `getAttribute` (u SVG i `xlink:href`), ne přes vlastnosti elementů: SVG `<a>.href` je objekt a `form.action` může stránka přepsat polem `<input name="action">` (DOM clobbering).
+  - Výsledek ze stránky se přijímá jen jako pole textů.
+  - Text a komentáře se neprohledávají.
+- **Na nic se neklikne, nic se neodešle a dál než na úvodní stránku se nejde.** Audio a video se jen zaznamenají a nestahují.
+- `kind` určuje typ požadavku (script, stylesheet, image, iframe, redirect, link, form, other). Platí první zjištěný typ a síťové požadavky se zaznamenají dřív než DOM.
+- **Přesměrování:** Chromium u přesměrování nevolá `route` handler, což ukázal test. Každý požadavek se proto stáhne přes `route.FetchAsync(MaxRedirects = 0)`. Cíl `Location` se zkontroluje proti blacklistu a privátním sítím a zakázaný se zablokuje. Povolený cíl prohlížeč otevře a jeho požadavek projde handlerem znovu.
+- Limit je **10 s na celou kontrolu**, včetně přesměrování (`CancellationToken` a zbývající čas pro každý krok). Po `load` se ještě nejvýš 3 s čeká na `networkidle` kvůli pozdním požadavkům z JS.
+- Výsledek je `Completed`, `Timeout` nebo `Unreachable` (DNS, spojení, TLS, HTTP ≥ 400 hlavní stránky, zablokovaná hlavní adresa). Adresy zachycené do chvíle chyby se vrátí i u neúspěchu.
+- **Obnova po pádu:** když spadne Chromium nebo Playwright driver, další kontrola spustí oba znovu. Kontroly rozpracované v okamžiku pádu skončí jako `unreachable` („Prohlížeč pro kontrolu spadl…“).
+- Souběžnost řídí jeden globální `SemaphoreSlim(SCAN_CONCURRENCY)` pro všechny běhy. Výchozí hodnota je 8 podle zadání. Podle měření je pro produkční běh lepší 4 na proces a škálovat víc kontejnery (viz VYSLEDKY).
+- Výjimka při kontrole jednoho obchodu se uloží jako chyba jen toho obchodu. Ostatní obchody i běh pokračují.
+- Vývojářský příkaz `dotnet Api.dll scan <url>` zkontroluje stránky bez DB a vypíše zachycené adresy.
+
+## API
+
+- Tři povinné operace v `openapi.yaml` jsou beze změny. Přidané endpointy (`/health`, `/alerts`, `/merchants`) jsou zdokumentované v tomtéž souboru i s důvodem. JSON používá snake_case.
+- `POST /runs` vrací 400, když:
+  - tělo není JSON objekt s polem `merchants`,
+  - pole je prázdné nebo má víc než 25 000 položek,
+  - `id` není neprázdný text (max. 200 znaků) nebo je v požadavku dvakrát,
+  - `url` není absolutní http(s) adresa,
+  - text není v UTF-8.
+
+  Obchody i položky běhu se zapisují jedním SQL příkazem, takže **20 000 obchodů vrátí 202 za 2,2–3,3 s** (změřeno).
+- `GET /runs/{id}`: neplatné i neznámé ID vrací 404. Při `running` vrací jen dokončené obchody, při `done` právě jeden výsledek na obchod, řazeno podle `merchant_id`. Data se vždy čtou z DB.
+- `POST /alerts/{id}/resolve`: poznámka může být prázdná (max. 10 000 znaků); prázdná se v API vrací jako `""`.
+- `GET /alerts` řadí od naposledy viděného nálezu. `GET /merchants` řadí podle zadání: nevyřízené nálezy, pak timeout/unreachable, pak OK, pak nezkontrolované. Hledání bere `%` a `_` doslova a stránkování je `{items, total, page, page_size}` s `pageSize` max. 1000.
+
+## UI
+
+- Dvě obrazovky: **Nálezy** (úvodní) a **Obchody**.
+- Nálezy:
+  - souhrnné karty stavů s proklikem na filtrovaný seznam obchodů (filtr je v URL),
+  - tabulka se serverovým stránkováním a výchozím filtrem „nevyřízené“,
+  - boční panel s detailem (co, kde, záznam a zdroj blacklistu, časy, kopírování URL, informace o vyřízení) a formulářem „Vyřídit“.
+- Obchody: hledání, filtr stavu a tlačítko „Spustit kontrolu“, které pošle všechny obchody z DB do `POST /runs`. Průběh se zjišťuje pollingem `GET /runs/{id}` každé 2 s a přežije i obnovení stránky (`run_id` je v `localStorage`, ošetřené chyby úložiště).
+- Barvy stavů jsou jednotné: **červená** = nalezeno nebo nevyřízeno, **žlutá** = nedokončeno (timeout), **oranžová** = nedostupné, **zelená** = OK, **šedá** = nezkontrolováno nebo vyřízeno. Timeout a nedostupné nejsou nikdy zelené.
+- Na Nálezech je stálé upozornění, když některé obchody nemají dokončenou kontrolu, protože prázdný seznam nálezů pak není důkaz bezpečí.
+- Úvodní stránka obchodu je v UI jen text, ne odkaz, protože web může být napadený. Písmo je systémové, takže UI nestahuje nic z internetu.
+- Z obchodu vede proklik na jeho nálezy. Při filtru na jeden obchod je výchozí pohled „Vše“, aby byla vidět i historie vyřízených nálezů.
+
+## Model hrozeb a opatření
+
+Kontrolujeme skutečné weby a některé mohou být napadené. Cílem je, aby napadený web nepoškodil hostitele, neviděl nic citlivého a nemohl kontrolu zneužít.
+
+| Hrozba | Jak by mohla nastat | Opatření |
+|---|---|---|
+| **Exploit prohlížeče** (škodlivý skript využije chybu v Chromiu) | Napadený web načte exploit | Kontrola běží v **Docker kontejneru**, ne na hostiteli, pod neprivilegovaným uživatelem `pwuser`. Kontejner nemá připojené složky hostitele ani Docker socket, nemá žádná tajemství (jen lokální heslo k DB, volitelně klíč URLhaus) a nevystavuje port DB. Chromium je aktuální verze z fixovaného image. Vlastní sandbox Chromia je vypnutý (výchozí nastavení Playwrightu v kontejneru), takže izolační hranicí je kontejner. |
+| **Únik dat mezi weby** | Cookies nebo úložiště jednoho webu ovlivní kontrolu jiného | Každý web má nový `BrowserContext` (žádné sdílené cookies ani storage), který se po kontrole zavře. |
+| **Stažení a spuštění souboru** | Web vyvolá stažení | `AcceptDownloads = false` a audio i video se nestahují. |
+| **Zneužití oprávnění** (kamera, poloha, notifikace) | Web žádá o oprávnění | Context nemá žádná oprávnění. Dialogy se zavírají a vyskakovací okna hned zavírají. |
+| **Návštěva škodlivé adresy** | Stránka načte nebo přesměruje na adresu z blacklistu | Požadavek se zaznamená a **zablokuje dřív, než odejde**, a to i pro cíle přesměrování. Ověřuje to automatický test s lokálním webem. |
+| **SSRF / útok na vnitřní síť** | Stránka pošle požadavek na `localhost`, `169.254.169.254` (metadata cloudu), `10.x` apod. | Blokují se `localhost`, privátní, loopback a link-local rozsahy IPv4 i IPv6 (včetně mapovaných adres) a schémata jiná než http/https, také pro cíle přesměrování. *Omezení:* kontroluje se IP zapsaná v URL, ne výsledek DNS. Doména, která se přeloží na privátní IP, projde (volitelný krok F). V produkci doporučuji kontejneru zakázat odchozí provoz do vnitřních sítí i na úrovni sítě (firewall nebo egress policy). |
+| **Interakce s webem** (odeslání formuláře, přihlášení) | Kontrola by měnila stav na cizím webu | Na nic se neklikne, nic se neodešle a dál než na úvodní stránku se nejde. Formuláře a odkazy se jen čtou z DOM. |
+| **Zahlcení webu** | Příliš mnoho požadavků | Každý web se kontroluje jednou za běh, s limitem 10 s, souběžnost je omezená a user agent běžný. |
+| **Podvržená data ze stránky** | Skript přepíše globální objekty nebo DOM, aby zmátl čtení odkazů | Atributy se čtou přes `getAttribute`, výsledek se ověřuje (jen pole textů) a každá URL projde normalizací. Nečekaná data nikdy neshodí běh, maximálně chybu jednoho obchodu. |
+| **Pád prohlížeče** (třeba vyvolaný stránkou) | Chromium nebo driver spadne | Automatická obnova. Rozpracované kontroly se označí jako chyba, ne jako OK. |
+| **Škodlivý obsah v UI** | Adresa nebo text z webu by se v UI vykonaly | React vše vykresluje jako text. Úvodní stránka obchodu ani škodlivá adresa nejsou v UI klikací odkazy. |
+
+## Testy
+
+- Unit testy: normalizace URL, ID nálezu, parser blacklistu, blokace privátních sítí a validace vstupu.
+- Integrační testy nad Postgresem (databáze `gatewatch_test`) s falešným scannerem ověřují pravidla nálezů, stavy, restart a seznamy.
+- Testy s Chromiem proti lokálnímu testovacímu webu ověřují: přesměrování, JS požadavky, DOM včetně SVG a „přepsaného“ formuláře, že se nikdy nestáhne blacklistovaná adresa, timeout, HTTP chybu, DNS, privátní síť a obnovu po pádu.
+- Celá sada (103 testů) běží přes `docker compose run --rm --build tests`. Na hostiteli `dotnet test` testy s DB a prohlížečem přeskočí.
+
+## Otevřené body a známá omezení
+
+- **Asi 34–50 % webů kontrola nedokončí** (ochrana proti botům 403/429 a timeouty). Příčina: kvůli blokaci cílů přesměrování posílá požadavky Node driver Playwrightu místo Chromia, takže ho ochrany poznají, a jeden driver je úzké hrdlo. Zadání je splněné, protože nedokončení se vždy zobrazí. Pravděpodobné zlepšení je posílat požadavky přímo z Chromia a cíle přesměrování blokovat jinak (CDP `Fetch`). Převzít ho lze jen tehdy, když projde test `Captures_requests_redirects_dom_and_never_fetches_blacklisted_urls`. Zatím nezkoušeno.
+- Client Hints (`sec-ch-ua`) prozrazují `HeadlessChrome`, i když hlavička `User-Agent` je běžná.
+- Ochrana proti SSRF přes DNS (doména → privátní IP) není (volitelný krok F).
+- Historie kontrol jednoho obchodu a znovuotevření nálezu nejsou (volitelné kroky B a E).

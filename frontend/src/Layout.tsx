@@ -7,6 +7,7 @@ import ShieldOutlined from '@mui/icons-material/ShieldOutlined'
 import ReportGmailerrorredOutlined from '@mui/icons-material/ReportGmailerrorredOutlined'
 import StorefrontOutlined from '@mui/icons-material/StorefrontOutlined'
 import { NavLink } from 'react-router-dom'
+import { plural } from './api'
 import { useSummary } from './useSummary'
 
 function NavItem({ to, icon, label, badge }: { to: string; icon: ReactNode; label: string; badge?: number }) {
@@ -59,7 +60,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
         {summary && (
           <Typography sx={{ display: { xs: 'none', md: 'block' }, px: 1, fontSize: 12, color: '#64748b' }}>
-            {summary.merchants} obchodů v evidenci
+            {plural(summary.merchants, 'obchod', 'obchody', 'obchodů')} v evidenci
           </Typography>
         )}
       </Box>

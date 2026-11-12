@@ -13,7 +13,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import { DataGrid, type GridColDef, type GridPaginationModel } from '@mui/x-data-grid'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { api, formatDate, type MerchantItem } from './api'
+import { api, formatDate, plural, type MerchantItem } from './api'
 import { gridLocale } from './gridLocale'
 import { PageHeader } from './Layout'
 import { ErrorBox } from './QueryState'
@@ -46,7 +46,7 @@ const columns: GridColDef<MerchantItem>[] = [
   },
   {
     field: 'last_error', headerName: 'Chyba', flex: 1, minWidth: 200, valueGetter: (v) => v ?? '',
-    renderCell: ({ value }) => <Typography variant="body2" color="text.secondary" noWrap title={value}>{value}</Typography>,
+    renderCell: ({ value }) => <Typography variant="body2" color="text.secondary" noWrap title={value} sx={{ lineHeight: "60px" }}>{value}</Typography>,
   },
   {
     field: 'open_alerts', headerName: 'Nevyřízené nálezy', width: 160, align: 'center', headerAlign: 'center',
@@ -105,7 +105,7 @@ export default function MerchantsPage() {
             </Select>
           </FormControl>
           <Box sx={{ flex: 1 }} />
-          {q.data && <Typography variant="body2" color="text.secondary">{q.data.total} obchodů</Typography>}
+          {q.data && <Typography variant="body2" color="text.secondary">{plural(q.data.total, 'obchod', 'obchody', 'obchodů')}</Typography>}
         </Stack>
         {q.isError ? (
           <Box sx={{ p: 2 }}><ErrorBox error={q.error} onRetry={() => q.refetch()} /></Box>

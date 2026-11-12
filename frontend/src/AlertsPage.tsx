@@ -11,7 +11,7 @@ import Typography from '@mui/material/Typography'
 import { DataGrid, type GridColDef, type GridPaginationModel } from '@mui/x-data-grid'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { KIND_LABELS, api, formatDate, type AlertItem } from './api'
+import { KIND_LABELS, api, formatDate, plural, type AlertItem } from './api'
 import AlertDrawer from './AlertDrawer'
 import { gridLocale } from './gridLocale'
 import { PageHeader } from './Layout'
@@ -119,7 +119,7 @@ export default function AlertsPage() {
           </ToggleButtonGroup>
           {merchantId && <Chip label={`Obchod: ${merchantId}`} onDelete={() => setParams({})} color="primary" variant="outlined" />}
           <Box sx={{ flex: 1 }} />
-          {q.data && <Typography variant="body2" color="text.secondary">{q.data.total} nálezů · klikněte na řádek pro detail</Typography>}
+          {q.data && <Typography variant="body2" color="text.secondary">{plural(q.data.total, 'nález', 'nálezy', 'nálezů')} · klikněte na řádek pro detail</Typography>}
         </Stack>
 
         {q.isError ? (

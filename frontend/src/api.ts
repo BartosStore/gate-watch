@@ -113,3 +113,7 @@ export const KIND_LABELS: Record<string, string> = {
   redirect: 'Přesměrování',
   other: 'Jiný požadavek',
 }
+
+/** Czech plural: plural(1, 'nález', 'nálezy', 'nálezů') = '1 nález', 2–4 → nálezy, 0 and 5+ → nálezů. */
+export const plural = (n: number, one: string, few: string, many: string) =>
+  `${n} ${n === 1 ? one : n >= 2 && n <= 4 ? few : many}`

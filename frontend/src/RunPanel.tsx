@@ -111,14 +111,14 @@ export default function RunPanel() {
         <Box sx={{ mt: 2.5 }}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ justifyContent: 'space-between', mb: 1 }}>
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {data.status === 'running' ? 'Probíhá kontrola' : data.status === 'done' ? 'Kontrola dokončena' : 'Kontrola selhala'}: {doneCount} z {total} obchodů
+              {data.status === 'running' ? 'Probíhá kontrola' : data.status === 'done' ? 'Kontrola dokončena' : 'Kontrola selhala'}: {doneCount} z {total} {total === 1 ? 'obchodu' : 'obchodů'}
             </Typography>
             <Summary run={data} />
           </Stack>
           <LinearProgress variant="determinate" value={total ? (doneCount / total) * 100 : 0} color={data.status === 'failed' ? 'error' : 'primary'} sx={{ height: 8, borderRadius: 999 }} />
           {data.status === 'failed' && (
             <Alert severity="error" sx={{ mt: 1 }}>
-              {data.error} Výsledky dokončených obchodů zůstaly uložené, ostatní obchody zkontrolované nejsou.
+              {data.error?.replace(/\.?$/, '.')} Výsledky dokončených obchodů zůstaly uložené, ostatní obchody zkontrolované nejsou.
             </Alert>
           )}
         </Box>
