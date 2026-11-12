@@ -84,6 +84,7 @@ Jedna sdílená funkce `UrlNormalizer` pro požadavky, odkazy, formuláře i bla
   Obchody i položky běhu se zapisují jedním SQL příkazem, takže **20 000 obchodů vrátí 202 za 2,2–3,3 s** (změřeno).
 - `GET /runs/{id}`: neplatné i neznámé ID vrací 404. Při `running` vrací jen dokončené obchody, při `done` právě jeden výsledek na obchod, řazeno podle `merchant_id`. Data se vždy čtou z DB.
 - `POST /alerts/{id}/resolve`: poznámka může být prázdná (max. 10 000 znaků); prázdná se v API vrací jako `""`.
+- **Dokumentace API (Swagger UI):** `GET /docs` zobrazí Swagger UI a `GET /openapi.yaml` vrací závazný `openapi.yaml` z repozitáře **beze změny**. Popis se negeneruje z kódu, protože by vznikly dva zdroje pravdy a generovaný popis by se mohl lišit od zadání (např. chybové odpovědi `{error}`, `const: true`, české popisy). Swagger UI je z NuGet balíčku `Swashbuckle.AspNetCore.SwaggerUI` (jen UI, bez generátoru), takže nic nestahuje z CDN a funguje offline v kontejneru. „Try it out“ volá živé API se stejnými daty jako UI. Oba endpointy jsou dopsané v `openapi.yaml`. Soubor hledá aplikace vedle sebe (v kontejneru `/app/openapi.yaml`) nebo v kořeni repozitáře, případně podle `OpenApiPath`. HTTP test ověřuje, že `/openapi.yaml` je bajtově shodný se souborem v repozitáři a že Swagger UI se načte a míří na něj.
 - `GET /alerts` řadí od naposledy viděného nálezu. `GET /merchants` řadí podle zadání: nevyřízené nálezy, pak timeout/unreachable, pak OK, pak nezkontrolované. Hledání bere `%` a `_` doslova a stránkování je `{items, total, page, page_size}` s `pageSize` max. 1000.
 
 ## UI
@@ -122,7 +123,8 @@ Kontrolujeme skutečné weby a některé mohou být napadené. Cílem je, aby na
 - Unit testy: normalizace URL, ID nálezu, parser blacklistu, blokace privátních sítí a validace vstupu.
 - Integrační testy nad Postgresem (databáze `gatewatch_test`) s falešným scannerem ověřují pravidla nálezů, stavy, restart a seznamy.
 - Testy s Chromiem proti lokálnímu testovacímu webu ověřují: přesměrování, JS požadavky, DOM včetně SVG a „přepsaného“ formuláře, že se nikdy nestáhne blacklistovaná adresa, timeout, HTTP chybu, DNS, privátní síť a obnovu po pádu.
-- Celá sada (103 testů) běží přes `docker compose run --rm --build tests`. Na hostiteli `dotnet test` testy s DB a prohlížečem přeskočí.
+- HTTP testy celé aplikace (`WebApplicationFactory` s Postgresem a falešným scannerem) ověřují přesný tvar odpovědí tří povinných operací (klíče, kódy 202/400/404/200) a dokumentační endpointy `/openapi.yaml` a `/docs`.
+- Celá sada (106 testů) běží přes `docker compose run --rm --build tests`. Na hostiteli `dotnet test` testy s DB a prohlížečem přeskočí.
 
 ## Otevřené body a známá omezení
 

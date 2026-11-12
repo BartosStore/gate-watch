@@ -193,6 +193,35 @@ paths:
                   page_size: { type: integer }
         "400": { $ref: "#/components/responses/Error" }
 
+  /openapi.yaml:
+    get:
+      summary: Tento popis API
+      description: |
+        Přidáno. Vrací tento soubor `openapi.yaml` beze změny, přesně ten z kořene repozitáře.
+        Proč: je jediným zdrojem pravdy o API. Načítá ho Swagger UI na `/docs` a lze ho použít pro generování klientů.
+      responses:
+        "200":
+          description: OpenAPI 3.1 specifikace v YAML
+          content:
+            application/yaml:
+              schema: { type: string }
+
+  /docs:
+    get:
+      summary: Interaktivní dokumentace API (Swagger UI)
+      description: |
+        Přidáno. HTML stránka se Swagger UI, která zobrazuje `/openapi.yaml` a umožňuje operace rovnou zkoušet
+        („Try it out“ volá živé API se stejnými daty jako UI). Swagger UI je součástí aplikace a nic nestahuje z internetu.
+        Proč: rychlé seznámení s API a ruční ověření bez dalších nástrojů. `/docs` přesměruje na `/docs/index.html`.
+      responses:
+        "200":
+          description: HTML stránka Swagger UI
+          content:
+            text/html:
+              schema: { type: string }
+        "301":
+          description: Přesměrování z `/docs` na `/docs/index.html`
+
 components:
   responses:
     Error:

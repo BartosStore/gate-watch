@@ -25,6 +25,7 @@ RUN dotnet restore tests/Api.Tests/Api.Tests.csproj
 COPY src/Api/ src/Api/
 COPY tests/ tests/
 COPY data/ data/
+COPY openapi.yaml ./
 RUN dotnet build tests/Api.Tests --no-restore
 CMD ["dotnet", "test", "tests/Api.Tests", "--no-build"]
 
@@ -34,6 +35,7 @@ WORKDIR /app
 COPY --from=build /app ./
 COPY --from=web /src/Api/wwwroot ./wwwroot
 COPY data ./data
+COPY openapi.yaml ./openapi.yaml
 # dotnet publish drops the exec bit of Playwright's bundled Node driver.
 RUN chmod +x /app/.playwright/node/*/node
 ENV ASPNETCORE_HTTP_PORTS=8080 \

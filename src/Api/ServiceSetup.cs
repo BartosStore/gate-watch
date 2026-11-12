@@ -33,5 +33,14 @@ public static class ServiceSetup
     public static string DataDir(IConfiguration config, IHostEnvironment env) =>
         Path.GetFullPath(config["DataDir"] ?? Path.Combine(env.ContentRootPath, "data"));
 
+    /// <summary>openapi.yaml next to the app (container) or in the repository root (dev, tests); null if missing.</summary>
+    public static string? OpenApiPath(IConfiguration config, IHostEnvironment env)
+    {
+        var candidates = config["OpenApiPath"] is { Length: > 0 } configured
+            ? [configured]
+            : new[] { Path.Combine(env.ContentRootPath, "openapi.yaml"), Path.Combine(env.ContentRootPath, "..", "..", "openapi.yaml") };
+        return candidates.Select(Path.GetFullPath).FirstOrDefault(File.Exists);
+    }
+
     public static readonly JsonNamingPolicy JsonNaming = JsonNamingPolicy.SnakeCaseLower;
 }

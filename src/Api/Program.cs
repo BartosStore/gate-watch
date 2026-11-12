@@ -41,6 +41,22 @@ using (var scope = app.Services.CreateScope())
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+// API documentation: the binding openapi.yaml from the repository is served as-is (single source of truth)
+// and rendered by Swagger UI at /docs. Swagger UI assets come from the NuGet package, no CDN.
+var openApiPath = ServiceSetup.OpenApiPath(app.Configuration, app.Environment);
+app.MapGet("/openapi.yaml", () => openApiPath is null
+        ? Results.Json(new { error = "openapi.yaml nebyl nalezen" }, statusCode: 404)
+        : Results.File(openApiPath, "application/yaml; charset=utf-8"))
+    .ExcludeFromDescription();
+app.UseSwaggerUI(o =>
+{
+    o.RoutePrefix = "docs";
+    o.DocumentTitle = "API – Kontrola webů obchodníků";
+    o.SwaggerEndpoint("/openapi.yaml", "Kontrola webů obchodníků");
+    o.DisplayRequestDuration();
+    o.EnableTryItOutByDefault();
+});
+
 app.MapGet("/health", async (AppDbContext db, BlacklistStore blacklist, CancellationToken ct) =>
     await db.Database.CanConnectAsync(ct)
         ? Results.Ok(new { status = "ok", blacklist_ready = blacklist.Ready, blacklist_entries = blacklist.Count })

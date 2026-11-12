@@ -50,7 +50,8 @@ docker compose up --build
 |---|---|
 | UI i API | <http://localhost:8080> |
 | Stav aplikace a blacklistu | <http://localhost:8080/health> |
-| Popis API | [openapi.yaml](openapi.yaml) |
+| Dokumentace API (Swagger UI) | <http://localhost:8080/docs> |
+| Popis API | [openapi.yaml](openapi.yaml), za běhu i na <http://localhost:8080/openapi.yaml> |
 
 - První build stáhne image s Chromiem, takže trvá několik minut. Další buildy jsou rychlé.
 - Při prvním startu se do databáze nahraje **219 skutečných českých e-shopů** z `data/merchants-sample.json` a blacklist. Dokud se blacklist načítá (pár sekund), spuštění kontroly vrací 503.
@@ -98,6 +99,12 @@ flowchart LR
 
 Závazný popis je v [openapi.yaml](openapi.yaml). Tři povinné operace jsou beze změny a přidané endpointy jsou v tomtéž souboru i s vysvětlením.
 
+**Interaktivní dokumentace (Swagger UI): <http://localhost:8080/docs>**. Zobrazuje přímo `openapi.yaml` z repozitáře (servírovaný beze změny na `/openapi.yaml`), takže je vždy stejná jako závazný popis. Přes „Try it out“ jde každou operaci rovnou zavolat proti běžící aplikaci se stejnými daty jako v UI. Swagger UI je součástí aplikace (NuGet balíček) a nic nestahuje z internetu.
+
+| | |
+|---|---|
+| **Přehled operací**<br>![Swagger UI](docs/screenshots/08-swagger-ui.png) | **„Try it out“: živé volání `GET /merchants`**<br>![Swagger Try it out](docs/screenshots/09-swagger-try-it-out.png) |
+
 | Metoda | Cesta | Popis |
 |---|---|---|
 | `POST` | `/runs` | Spustí kontrolu seznamu obchodů a hned vrátí `202 {run_id}` (i pro 20 000 obchodů do 5 s). `400` při špatném vstupu, `503` dokud se načítá blacklist. |
@@ -106,6 +113,8 @@ Závazný popis je v [openapi.yaml](openapi.yaml). Tři povinné operace jsou be
 | `GET` | `/alerts` | *(přidáno)* Seznam nálezů pro UI: `resolved`, `merchant_id`, stránkování. |
 | `GET` | `/merchants` | *(přidáno)* Obchody s poslední kontrolou: `search`, `status`, stránkování. |
 | `GET` | `/health` | *(přidáno)* Stav DB a blacklistu. |
+| `GET` | `/docs` | *(přidáno)* Swagger UI nad `openapi.yaml`. |
+| `GET` | `/openapi.yaml` | *(přidáno)* Tento popis API beze změny. |
 
 <details>
 <summary>Příklady (bash a Windows PowerShell)</summary>
@@ -144,7 +153,7 @@ Blacklist se při startu načte do databáze i do paměti. Stav ukazuje `GET /he
 
 ## Testy
 
-Celá sada, tedy 103 testů včetně testů s Chromiem a integračních testů nad PostgreSQL, běží v kontejneru. Příkaz funguje v PowerShellu, cmd i bashi:
+Celá sada, tedy 106 testů včetně testů s Chromiem, integračních testů nad PostgreSQL a HTTP testů celé aplikace, běží v kontejneru. Příkaz funguje v PowerShellu, cmd i bashi:
 
 ```bash
 docker compose run --rm --build tests
@@ -159,7 +168,8 @@ Testy ověřují hlavně pravidla zadání:
 - blacklistovaná adresa se nestáhne ani přes přesměrování,
 - adresa v komentáři nebo textu nálezem není,
 - privátní síť se blokuje,
-- aplikace se obnoví po pádu prohlížeče.
+- aplikace se obnoví po pádu prohlížeče,
+- přes HTTP mají tři povinné operace přesně tvar odpovědí podle `openapi.yaml` a `/openapi.yaml` i Swagger UI na `/docs` fungují.
 
 Testy používají samostatnou databázi `gatewatch_test`, takže data aplikace zůstanou netknutá. Rychlé unit testy jdou spustit i na hostiteli: `dotnet test` (testy s prohlížečem a DB se přeskočí).
 
@@ -232,7 +242,7 @@ Vite dev server přeposílá volání API na `http://localhost:8080`.
 | [docs/PREDPOKLADY.md](docs/PREDPOKLADY.md) | Předpoklady a rozhodnutí: identita nálezu, normalizace, shoda s blacklistem, mapování stavů, timeout s nálezem, restart, **model hrozeb**, otevřené body |
 | [docs/VYSLEDKY.md](docs/VYSLEDKY.md) | Které weby se skenovaly, změřená čísla, odhad doby a nákladů, co se povedlo a co ne |
 | [docs/ZADANI.md](docs/ZADANI.md) | Původní zadání |
-| [openapi.yaml](openapi.yaml) | Popis API |
+| [openapi.yaml](openapi.yaml) | Popis API, za běhu interaktivně na `/docs` (Swagger UI) |
 
 ```
 src/Api/            ASP.NET Core minimal API, EF Core (PostgreSQL), Playwright
