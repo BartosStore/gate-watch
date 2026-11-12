@@ -1,0 +1,17 @@
+# URLhaus snapshot (záložní zdroj, když nejde stáhnout aktuální export)
+#
+# Stav 2026-11-12: URLhaus vyžaduje pro stažení exportu bezplatný Auth-Key
+# (staré veřejné adresy /downloads/text*/ vrací 410 Gone). Bez klíče nebylo možné
+# stáhnout skutečná data, proto tu jsou jen ukázkové záznamy na rezervovaných
+# doménách (.invalid / .example), které nikdy neexistují.
+#
+# Jak nahradit skutečným vzorkem (na hostiteli, klíč se do repozitáře neukládá):
+#   curl -s "https://urlhaus-api.abuse.ch/v2/files/exports/<AUTH-KEY>/recent.csv" \
+#     | grep -v '^#' | cut -d'"' -f6 | head -500 > data/urlhaus-snapshot.txt
+#
+# Formát: jedna URL na řádek, řádky začínající # se ignorují.
+http://malware-download.invalid/bins/x86
+http://198.51.100.23:8080/i.sh
+https://phish-login.invalid/secure/update.php
+http://dropper.example/payload.exe
+https://cdn-skimmer.invalid/jquery.min.js

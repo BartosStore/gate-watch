@@ -19,6 +19,7 @@ FROM mcr.microsoft.com/playwright/dotnet:v1.64.1-noble
 WORKDIR /app
 COPY --from=build /app ./
 COPY --from=web /src/Api/wwwroot ./wwwroot
+COPY data ./data
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     DOTNET_RUNNING_IN_CONTAINER=true
 EXPOSE 8080

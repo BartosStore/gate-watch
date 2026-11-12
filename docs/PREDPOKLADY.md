@@ -14,3 +14,10 @@
 - Normalizace URL (`UrlNormalizer`): relativní adresa se převede na absolutní vůči stránce, kde se našla. Povolená jsou jen schémata http/https. Schéma a host se převedou na malá písmena (IDN na punycode), výchozí port 80/443 se odstraní, stejně jako fragment a `user:pass@`. Prázdná cesta se nahradí `/`. Cesta a dotaz zůstávají beze změny; jen .NET `Uri` sjednotí procentové kódování a odstraní `.`/`..`.
 - ID nálezu je prvních 32 hex znaků SHA-256 z `merchant_id + "\n" + normalizovaná_url`, malými písmeny.
 - Při prvním startu na prázdné DB zapíše EF do logu jednu `fail` hlášku, protože hledá ještě neexistující tabulku `__EFMigrationsHistory`. Je to neškodné, EF ji hned potom vytvoří.
+- URLhaus (2026-11-12): staré veřejné exporty (`/downloads/text*/`, `csv*`) vracejí 410 Gone. Nový export `https://urlhaus-api.abuse.ch/v2/files/exports/<KEY>/recent.csv` vyžaduje bezplatný Auth-Key.
+- Stahování URLhaus proto proběhne jen s proměnnou `URLHAUS_AUTH_KEY`. Je volitelná a jde nastavit v `.env`, který je v `.gitignore`. Je to jediný údaj, který může kontejner dostat. Bez klíče, nebo když stahování selže, se ponechá předchozí úspěšný import z DB. Pokud žádný není, použije se `data/urlhaus-snapshot.txt`.
+- `data/urlhaus-snapshot.txt` zatím obsahuje jen ukázkové záznamy na rezervovaných doménách (`.invalid`, `.example`, IP z dokumentačního rozsahu), protože skutečná data bez klíče stáhnout nešla. Návod na nahrazení skutečným vzorkem je v hlavičce souboru.
+- Zdroj záznamu (`blacklist_entries.source`): `urlhaus`, `urlhaus-snapshot` nebo `custom`. Když je stejná URL ve více zdrojích, zůstane ten, který ji přidal první.
+- Import přepíše jen záznamy daného zdroje. Nezměněné záznamy si ponechají `added_at` a záznamy zmizelé ze zdroje se smažou. `data/blacklist-custom.txt` se načítá při každém startu.
+- V paměti je blacklist uložený jako slovník `normalizovaná URL -> zdroj` místo HashSetu, protože zdroj je potřeba u nálezu. Dokud se nenačte, `POST /runs` vrací 503. Když import selže (např. DB), opakuje se za 30 s.
+- `GET /health` navíc vrací `blacklist_ready` a `blacklist_entries`.

@@ -16,6 +16,13 @@ docker compose up --build
 - Kontrola stavu: `GET http://localhost:8080/health` (vrací 200, pokud je databáze dostupná)
 - Data Postgresu jsou ve volume `pgdata` a přežijí restart. Smazání dat: `docker compose down -v`.
 
+## Blacklist
+
+Při startu se načte do DB a do paměti. Stav ukazuje `GET /health` (`blacklist_ready`, `blacklist_entries`).
+
+- **URLhaus** vyžaduje bezplatný Auth-Key z [auth.abuse.ch](https://auth.abuse.ch/). Pokud ho máte, vložte do souboru `.env` vedle `docker-compose.yml` řádek `URLHAUS_AUTH_KEY=váš-klíč`. Bez klíče se použije `data/urlhaus-snapshot.txt`.
+- **Vlastní záznamy:** `data/blacklist-custom.txt`, jedna URL na řádek. Projeví se po restartu (`docker compose up --build`).
+
 ## Vývoj bez Dockeru (volitelné)
 
 Spusťte jen databázi a API běží lokálně (.NET 10 SDK, Node 24):

@@ -1,0 +1,4 @@
+# Vlastní testovací záznamy blacklistu (jedna URL na řádek, # = komentář).
+# Slouží k předvedení nálezu na skutečném e-shopu. Po kroku 7 sem přibude
+# adresa skriptu, který některý e-shop ze vzorku opravdu načítá.
+https://evil.example/skimmer.js

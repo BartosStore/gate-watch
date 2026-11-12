@@ -22,6 +22,8 @@ services:
     environment:
       ConnectionStrings__Db: "Host=db;Port=5432;Database=gatewatch;Username=gatewatch;Password=gatewatch"
       SCAN_CONCURRENCY: "8"
+      # Optional free abuse.ch Auth-Key (e.g. in .env); without it the stored snapshot is used.
+      URLHAUS_AUTH_KEY: ${URLHAUS_AUTH_KEY:-}
     ports:
       - "8080:8080"
     # Chromium needs larger shared memory than Docker's 64 MB default.

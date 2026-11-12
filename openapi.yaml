@@ -118,9 +118,11 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status]
+                required: [status, blacklist_ready, blacklist_entries]
                 properties:
                   status: { const: ok }
+                  blacklist_ready: { type: boolean, description: "false = blacklist se ještě načítá a POST /runs vrací 503" }
+                  blacklist_entries: { type: integer, description: Počet záznamů blacklistu v paměti }
         "503":
           description: Databáze není dostupná
           content:
