@@ -47,11 +47,15 @@ public sealed class RunService(
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO merchants (id, url, created_at)
             SELECT id, url, {now} FROM unnest({merchants.Select(m => m.Id).ToArray()}, {merchants.Select(m => m.Url).ToArray()}) AS m(id, url)
-            ON CONFLICT (id) DO UPDATE SET url = EXCLUDED.url
+            ON CONFLICT (id) DO UPDATE SET url = EXCLUDED.url WHERE merchants.url <> EXCLUDED.url
             """, ct);
         db.Runs.Add(run);
-        db.RunItems.AddRange(merchants.Select(m => new RunItem { RunId = run.Id, MerchantId = m.Id }));
         await db.SaveChangesAsync(ct);
+        // One statement for all run items: 20 000 merchants must still answer 202 within 5 s.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO run_items (run_id, merchant_id, state)
+            SELECT {run.Id}, id, {RunItemState.Pending} FROM unnest({merchants.Select(m => m.Id).ToArray()}) AS m(id)
+            """, ct);
         await tx.CommitAsync(ct);
         return run.Id;
     }
