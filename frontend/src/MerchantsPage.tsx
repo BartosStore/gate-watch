@@ -9,6 +9,7 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { DataGrid, type GridColDef, type GridPaginationModel } from '@mui/x-data-grid'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { api, formatDate, type MerchantItem } from './api'
 import { gridLocale } from './gridLocale'
 import { ErrorBox } from './QueryState'
@@ -41,7 +42,14 @@ const columns: GridColDef<MerchantItem>[] = [
   { field: 'last_error', headerName: 'Chyba', flex: 1, minWidth: 200, valueGetter: (v) => v ?? '' },
   {
     field: 'open_alerts', headerName: 'Nevyřízené nálezy', width: 150, align: 'center', headerAlign: 'center',
-    renderCell: ({ value }) => (value > 0 ? <StatusChip status="open" label={String(value)} /> : '0'),
+    renderCell: ({ row }) => (
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        {row.open_alerts > 0 ? <StatusChip status="open" label={String(row.open_alerts)} /> : <span>0</span>}
+        {(row.open_alerts > 0 || row.last_outcome === 'found') && (
+          <Link to={`/nalezy?merchant_id=${encodeURIComponent(row.id)}`}>nálezy</Link>
+        )}
+      </Stack>
+    ),
   },
   { field: 'last_check_at', headerName: 'Zkontrolováno', width: 170, valueFormatter: (v) => formatDate(v) },
   { field: 'last_duration_ms', headerName: 'Doba', width: 90, valueFormatter: (v: number | null) => (v == null ? '–' : `${(v / 1000).toFixed(1)} s`) },

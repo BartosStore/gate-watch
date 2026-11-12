@@ -2,7 +2,7 @@
 
 Aplikace pravidelně kontroluje úvodní stránky e-shopů. Hledá, jestli stránka nenačítá škodlivou adresu z blacklistu (URLhaus) nebo na ni nevede. Nálezy se dají vyřídit s poznámkou. Zadání je v [docs/ZADANI.md](docs/ZADANI.md).
 
-> Stav: hotové API včetně pomocných endpointů (kroky 0–5). UI přibude v kroku 6.
+> Stav: hotové API a UI (kroky 0–6). Zbývá měření vzorku a finální dokumentace.
 
 ## Spuštění
 

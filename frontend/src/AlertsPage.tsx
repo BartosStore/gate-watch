@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import Alert from '@mui/material/Alert'
+import Chip from '@mui/material/Chip'
 import Paper from '@mui/material/Paper'
+import Tooltip from '@mui/material/Tooltip'
 import Stack from '@mui/material/Stack'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
 import { DataGrid, type GridColDef, type GridPaginationModel } from '@mui/x-data-grid'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { KIND_LABELS, api, formatDate, type AlertItem } from './api'
 import AlertDrawer from './AlertDrawer'
 import { gridLocale } from './gridLocale'
@@ -16,11 +18,22 @@ import StatusChip from './StatusChip'
 
 type Filter = 'open' | 'resolved' | 'all'
 
+/** Shortens in the middle so both host and file name stay visible: https://evil.example/…/skimmer.js */
+export function middleEllipsis(s: string, max = 70) {
+  if (s.length <= max) return s
+  const keep = max - 1
+  return s.slice(0, Math.ceil(keep * 0.55)) + '…' + s.slice(s.length - Math.floor(keep * 0.45))
+}
+
 const columns: GridColDef<AlertItem>[] = [
   { field: 'merchant_id', headerName: 'Obchod', width: 170 },
   {
     field: 'url', headerName: 'Škodlivá adresa', flex: 1, minWidth: 300,
-    renderCell: ({ value }) => <Typography variant="body2" sx={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</Typography>,
+    renderCell: ({ value }) => (
+      <Tooltip title={value}>
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', whiteSpace: 'nowrap', lineHeight: '52px' }}>{middleEllipsis(value)}</Typography>
+      </Tooltip>
+    ),
   },
   { field: 'kind', headerName: 'Typ', width: 140, valueFormatter: (v: string) => KIND_LABELS[v] ?? v },
   { field: 'first_seen_at', headerName: 'Poprvé', width: 165, valueFormatter: (v) => formatDate(v) },
@@ -45,13 +58,27 @@ function useCheckSummary() {
 }
 
 export default function AlertsPage() {
-  const [filter, setFilter] = useState<Filter>('open')
+  const [params, setParams] = useSearchParams()
+  const merchantId = params.get('merchant_id') ?? ''
+  // Default view: unresolved findings; for one merchant show all of its findings (incl. resolved history).
+  const [filter, setFilter] = useState<Filter>(merchantId ? 'all' : 'open')
   const [pagination, setPagination] = useState<GridPaginationModel>({ page: 0, pageSize: 25 })
   const [selected, setSelected] = useState<AlertItem | null>(null)
+  const [lastMerchant, setLastMerchant] = useState(merchantId)
+  if (lastMerchant !== merchantId) { // merchant filter changed (link or chip removed): reset view
+    setLastMerchant(merchantId)
+    setFilter(merchantId ? 'all' : 'open')
+    setPagination((p) => ({ ...p, page: 0 }))
+  }
 
   const q = useQuery({
-    queryKey: ['alerts', filter, pagination],
-    queryFn: () => api.alerts({ resolved: filter === 'all' ? undefined : filter === 'resolved', page: pagination.page + 1, pageSize: pagination.pageSize }),
+    queryKey: ['alerts', filter, merchantId, pagination],
+    queryFn: () => api.alerts({
+      resolved: filter === 'all' ? undefined : filter === 'resolved',
+      merchant_id: merchantId || undefined,
+      page: pagination.page + 1,
+      pageSize: pagination.pageSize,
+    }),
     placeholderData: keepPreviousData,
   })
   const summary = useCheckSummary()
@@ -66,6 +93,7 @@ export default function AlertsPage() {
           <ToggleButton value="resolved">Vyřízené</ToggleButton>
           <ToggleButton value="all">Vše</ToggleButton>
         </ToggleButtonGroup>
+        {merchantId && <Chip label={`Obchod: ${merchantId}`} onDelete={() => setParams({})} />}
         {q.data && <Typography variant="body2" color="text.secondary">{q.data.total} nálezů</Typography>}
       </Stack>
 

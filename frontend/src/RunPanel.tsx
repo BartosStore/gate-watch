@@ -10,11 +10,31 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, type Run } from './api'
 import { useToast } from './Toast'
 
+type RunRef = { id: string; total: number }
+const STORAGE_KEY = 'gatewatch.activeRun'
+
+// The running check survives a page reload; storage may be unavailable (private mode), so failures are ignored.
+function loadRun(): RunRef | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')
+    return v && typeof v.id === 'string' && typeof v.total === 'number' ? v : null
+  } catch {
+    return null
+  }
+}
+function saveRun(r: RunRef | null) {
+  try {
+    if (r) localStorage.setItem(STORAGE_KEY, JSON.stringify(r))
+    else localStorage.removeItem(STORAGE_KEY)
+  } catch { /* ignore */ }
+}
+
 /** "Spustit kontrolu": sends all merchants to POST /runs and polls GET /runs/{id} until it finishes. */
 export default function RunPanel() {
   const qc = useQueryClient()
   const toast = useToast()
-  const [run, setRun] = useState<{ id: string; total: number } | null>(null)
+  const [run, setRunState] = useState<RunRef | null>(loadRun)
+  const setRun = (r: RunRef | null) => { saveRun(r); setRunState(r) }
 
   const start = useMutation({
     mutationFn: async () => {
@@ -39,6 +59,7 @@ export default function RunPanel() {
   useEffect(() => {
     if (!data || data.status === 'running' || finished.current === data.run_id) return
     finished.current = data.run_id
+    saveRun(null) // finished: do not resume it after the next reload
     qc.invalidateQueries({ queryKey: ['merchants'] })
     qc.invalidateQueries({ queryKey: ['alerts'] })
     qc.invalidateQueries({ queryKey: ['summary'] })
@@ -52,7 +73,13 @@ export default function RunPanel() {
     if (data?.status === 'running' && doneCount > 0) qc.invalidateQueries({ queryKey: ['merchants'] })
   }, [doneCount, data?.status, qc])
 
-  const running = start.isPending || data?.status === 'running' || (!!run && !data)
+  // A remembered run that no longer exists (e.g. database reset) is forgotten instead of blocking the button.
+  const statusError = status.error
+  useEffect(() => {
+    if (statusError instanceof ApiError && statusError.status === 404) { saveRun(null); setRunState(null) }
+  }, [statusError])
+
+  const running = start.isPending || data?.status === 'running' || (!!run && !data && !status.isError)
   const total = run?.total ?? 0
 
   return (
