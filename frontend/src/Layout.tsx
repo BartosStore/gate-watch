@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import Box from '@mui/material/Box'
+import Link from '@mui/material/Link'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
 import ShieldOutlined from '@mui/icons-material/ShieldOutlined'
@@ -62,8 +63,18 @@ export default function Layout({ children }: { children: ReactNode }) {
           </Typography>
         )}
       </Box>
-      <Box component="main" sx={{ flex: 1, minWidth: 0, p: { xs: 2, md: 4 } }}>
-        <Box sx={{ maxWidth: 1400, mx: 'auto' }}>{children}</Box>
+      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <Box component="main" sx={{ flex: 1, p: { xs: 2, md: 4 } }}>
+          <Box sx={{ maxWidth: 1400, mx: 'auto' }}>{children}</Box>
+        </Box>
+        <Box component="footer" sx={{ px: { xs: 2, md: 4 }, py: 2, borderTop: 1, borderColor: 'divider', textAlign: 'center' }}>
+          <Typography variant="body2" color="text.secondary">
+            Developed by{' '}
+            <Link href="https://bartosdev.cz" target="_blank" rel="noopener noreferrer" underline="hover" sx={{ fontWeight: 600 }}>
+              Miroslav Bartoš
+            </Link>
+          </Typography>
+        </Box>
       </Box>
     </Box>
   )
